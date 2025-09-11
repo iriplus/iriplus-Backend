@@ -6,10 +6,10 @@ from user_type_enum import UserType
 db = SQLAlchemy()
 
 class BaseModel(db.Model):
-    __abstract__= True
-    id = db.Column(db.Integer, primary_key=True) 
-    date_created = db.Column(db.DateTime, default=datetime.datetime.now)
-    date_deleted = db.Column(db.DateTime, nullable=True)
+    __abstract__ = True
+    id = db.Column(db.Integer, primary_key = True) 
+    date_created = db.Column(db.DateTime, default = datetime.datetime.now)
+    date_deleted = db.Column(db.DateTime, nullable = True)
 
 
 class Level(BaseModel):
@@ -18,6 +18,8 @@ class Level(BaseModel):
     description = db.Column(db.String(255), nullable = False, unique = True)
     cosmetic = db.Column(db.Text, nullable = True, unique = True)
 
+    students = db.relationship("User", back_populates = "student_level")
+
 class Class(BaseModel):
     __tablename__ = 'class'
     class_code = db.Column(db.String(16), nullable = False, unique = True)
@@ -25,15 +27,25 @@ class Class(BaseModel):
     suggested_level = db.Column(db.String(255), nullable = False)
     max_capacity = db.Column(db.Integer, nullable = False)
 
+    exams = db.relationship("Exam", back_populates = "class_exam")
+
+    students = db.relationship("User", back_populates = "student_class")
+
 class Exam(BaseModel):
     __tablename__ = 'exam'
     status = db.Column(db.String(255), nullable = False)
     notes = db.Column(db.Text, nullable = True)
     
-    coordinator_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=True)
+    coordinator_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete = "CASCADE"), nullable = True)
     coordinator = db.relationship("User", back_populates = "coordinator_exams")
 
     excercises = db.relationship("Excercise", back_populates = "exam")
+
+    class_id = db.Column(db.Integer, db.ForeignKey("class.id", ondelete = "CASCADE"), nullable = True)
+    class_exam = db.relationship("Class", back_populates = "exams") 
+
+    student_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete = "CASCADE"), nullable = True)
+    student_exam = db.relationship("User", back_populates = "student_exams")
 
 class Excercise(BaseModel):
     __tablename__ = 'excercise'
@@ -42,7 +54,7 @@ class Excercise(BaseModel):
     rubric = db.Column(db.String(255), nullable = False)
     key = db.Column(db.String(255), nullable = False)
 
-    exam_id = db.Column(db.Integer, db.ForeignKey("exam.id", ondelete="CASCADE", nullable = False))
+    exam_id = db.Column(db.Integer, db.ForeignKey("exam.id", ondelete = "CASCADE"), nullable = False)
     exam = db.relationship("Exam", back_populates = "excercises")
 
 class User(BaseModel):
@@ -56,4 +68,12 @@ class User(BaseModel):
     dni = db.Column(db.String(10), nullable = False)
     accumulated_xp = db.Column(db.Integer, nullable = True)
 
-    coordinator_exams = db.relationship("Exam",back_populates="coordinator")
+    coordinator_exams = db.relationship("Exam",back_populates = "coordinator")
+
+    student_level_id = db.Column(db.Integer, db.ForeignKey("level.id", ondelete = "CASCADE"), nullable = True)
+    student_level = db.relationship("Level", back_populates = "students")
+
+    student_exams = db.relationship("Exam", back_populates = "student_exam")
+
+    student_class_id = db.Column(db.Integer, db.ForeignKey("class.id", ondelete = "CASCADE"), nullable = True)
+    student_class = db.relationship("Class", back_populates = "students")
