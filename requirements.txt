@@ -5,3 +5,4 @@ pymysql
 Flask-migrate
 cryptography
 python-dotenv
+
