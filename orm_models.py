@@ -11,12 +11,17 @@ class BaseModel(db.Model):
     date_created = db.Column(db.DateTime, default = datetime.datetime.now)
     date_deleted = db.Column(db.DateTime, nullable = True)
 
+teacher_class = db.Table(
+    "teacher_class",
+    db.Column("user.id", db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), primary_key=True),
+    db.Column("class.id", db.Integer, db.ForeignKey("class.id", ondelete="CASCADE"), primary_key=True),
+)
 
 class Level(BaseModel):
     __tablename__ = "level"
     min_xp = db.Column(db.Integer, nullable = False, unique = True)
     description = db.Column(db.String(255), nullable = False, unique = True)
-    cosmetic = db.Column(db.Text, nullable = True, unique = True)
+    cosmetic = db.Column(db.Text(1024), nullable = True, )
 
     students = db.relationship("User", back_populates = "student_level")
 
@@ -31,10 +36,12 @@ class Class(BaseModel):
 
     students = db.relationship("User", back_populates = "student_class")
 
+    teachers = db.relationship("Class",secondary = teacher_class,back_populates = "teacher_classes")
+
 class Exam(BaseModel):
     __tablename__ = 'exam'
     status = db.Column(db.String(255), nullable = False)
-    notes = db.Column(db.Text, nullable = True)
+    notes = db.Column(db.Text(1024), nullable = True)
     
     coordinator_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete = "CASCADE"), nullable = True)
     coordinator = db.relationship("User", back_populates = "coordinator_exams")
@@ -50,7 +57,7 @@ class Exam(BaseModel):
 class Excercise(BaseModel):
     __tablename__ = 'excercise'
     type = db.Column(db.String(255), nullable = False)
-    content = db.Column(db.Text, nullable = False)
+    content = db.Column(db.Text(1024), nullable = False)
     rubric = db.Column(db.String(255), nullable = False)
     key = db.Column(db.String(255), nullable = False)
 
@@ -63,7 +70,7 @@ class User(BaseModel):
     surname = db.Column(db.String(255), nullable = False)
     email = db.Column(db.String(255), nullable = False, unique = True)
     passwd = db.Column(db.String(255), nullable = False)
-    profile_picture = db.Column(db.Text, nullable = True)
+    profile_picture = db.Column(db.Text(1024), nullable = True)
     type = db.Column(Enum(UserType), nullable = False)
     dni = db.Column(db.String(10), nullable = False)
     accumulated_xp = db.Column(db.Integer, nullable = True)
@@ -77,3 +84,5 @@ class User(BaseModel):
 
     student_class_id = db.Column(db.Integer, db.ForeignKey("class.id", ondelete = "CASCADE"), nullable = True)
     student_class = db.relationship("Class", back_populates = "students")
+
+    teacher_classes = db.relationship("Class", secondary = teacher_class, back_populates = "teachers")
