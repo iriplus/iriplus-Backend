@@ -24,7 +24,20 @@ class Level(BaseModel):
     cosmetic = db.Column(db.Text, nullable = True, unique = True)
 
 class Class(BaseModel):
-    class_code = db.Column(db.Column(db.String(16)), nullable = False, unique = True)
+    class_code = db.Column(db.String(16), nullable = False, unique = True)
+    description = db.Column(db.String(255), nullable = False, unique = True)
+    suggested_level = db.Column(db.String(255), nullable = False)
+    max_capacity = db.Column(db.Integer, nullable = False)
+
+class Exam(BaseModel):
+    status = db.Column(db.String(255), nullable = False)
+    notes = db.Column(db.Text, nullable = True)
+
+class Excercise(BaseModel):
+    type = db.Column(db.String(255), nullable = False)
+    content = db.Column(db.Text, nullable = False)
+    rubric = db.Column(db.String(255), nullable = False)
+    key = db.Column(db.String(255), nullable = False)
 
 class User(BaseModel):
     name = db.Column(db.String(255), nullable = False)
@@ -35,4 +48,3 @@ class User(BaseModel):
     type = db.Column(Enum(UserType), nullable = False)
     dni = db.Column(db.String(10), nullable = False)
     accumulated_xp = db.Column(db.Integer, nullable = True)
-
