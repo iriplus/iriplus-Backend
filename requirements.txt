@@ -1,0 +1,7 @@
+pylint
+Flask
+Flask-SQLAlchemy
+pymysql
+Flask-migrate
+cryptography
+python-dotenv
