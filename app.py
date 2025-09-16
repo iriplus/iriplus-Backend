@@ -1,7 +1,9 @@
-from flask import Flask  # API REST en Python
-from orm_models import db  # tu SQLAlchemy
 import os
+from flask import Flask
+from orm_models import db
 from dotenv import load_dotenv
+from routes.level_routes import level_bp
+
 
 # Cargar variables de entorno según el entorno
 env_name = os.getenv("ENVIRONMENT", "dev")
@@ -29,9 +31,12 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # Vincular SQLAlchemy con la app
 db.init_app(app)
 
+app.register_blueprint(level_bp)
+
 # Crear tablas dentro del contexto de la app
 with app.app_context():
     db.create_all()
     print("✅ Tablas creadas correctamente")
 
-
+if __name__ == "__main__":
+    app.run(debug=True)
