@@ -9,7 +9,7 @@ def create_level():
         cosmetic = data["cosmetic"]
         min_xp = data["min_xp"]
 
-        level = Level(description = description, cosmetic = cosmetic, min_xp = min_xp)
+        level = Level(description = description, cosmetic = cosmetic, min_xp = min_xp, date_created = datetime.datetime.now())
 
         db.session.add(level)
         db.session.commit()

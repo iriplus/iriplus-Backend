@@ -13,8 +13,8 @@ class BaseModel(db.Model):
 
 teacher_class = db.Table(
     "teacher_class",
-    db.Column("user.id", db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), primary_key=True),
-    db.Column("class.id", db.Integer, db.ForeignKey("class.id", ondelete="CASCADE"), primary_key=True),
+    db.Column("user_id", db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), primary_key=True),
+    db.Column("class_id", db.Integer, db.ForeignKey("class.id", ondelete="CASCADE"), primary_key=True),
 )
 
 class Level(BaseModel):
@@ -36,7 +36,7 @@ class Class(BaseModel):
 
     students = db.relationship("User", back_populates = "student_class")
 
-    teachers = db.relationship("Class",secondary = teacher_class,back_populates = "teacher_classes")
+    teachers = db.relationship("User",secondary = teacher_class,back_populates = "teacher_classes")
 
 class Exam(BaseModel):
     __tablename__ = 'exam'
@@ -44,7 +44,7 @@ class Exam(BaseModel):
     notes = db.Column(db.Text(1024), nullable = True)
     
     coordinator_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete = "CASCADE"), nullable = True)
-    coordinator = db.relationship("User", back_populates = "coordinator_exams")
+    coordinator = db.relationship("User", back_populates = "coordinator_exams", foreign_keys="Exam.coordinator_id")
 
     excercises = db.relationship("Excercise", back_populates = "exam")
 
@@ -52,7 +52,7 @@ class Exam(BaseModel):
     class_exam = db.relationship("Class", back_populates = "exams") 
 
     student_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete = "CASCADE"), nullable = True)
-    student_exam = db.relationship("User", back_populates = "student_exams")
+    student_exam = db.relationship("User", back_populates = "student_exams", foreign_keys="Exam.student_id",)
 
 class Excercise(BaseModel):
     __tablename__ = 'excercise'
@@ -75,12 +75,12 @@ class User(BaseModel):
     dni = db.Column(db.String(10), nullable = False)
     accumulated_xp = db.Column(db.Integer, nullable = True)
 
-    coordinator_exams = db.relationship("Exam",back_populates = "coordinator")
+    coordinator_exams = db.relationship("Exam",back_populates = "coordinator", foreign_keys="Exam.coordinator_id")
 
     student_level_id = db.Column(db.Integer, db.ForeignKey("level.id", ondelete = "CASCADE"), nullable = True)
     student_level = db.relationship("Level", back_populates = "students")
 
-    student_exams = db.relationship("Exam", back_populates = "student_exam")
+    student_exams = db.relationship("Exam", back_populates = "student_exam", foreign_keys="Exam.student_id")
 
     student_class_id = db.Column(db.Integer, db.ForeignKey("class.id", ondelete = "CASCADE"), nullable = True)
     student_class = db.relationship("Class", back_populates = "students")
