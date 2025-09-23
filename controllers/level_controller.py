@@ -3,8 +3,10 @@ from flask import request, jsonify
 from orm_models import db, Level
 
 def create_level():
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"message: Invalid JSON body"}), 400
     try:
-        data =  request.json
         description = data["description"]
         cosmetic = data["cosmetic"]
         min_xp = data["min_xp"]
