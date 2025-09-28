@@ -3,6 +3,7 @@ from flask import Flask
 from orm_models import db
 from dotenv import load_dotenv
 from routes.level_routes import level_bp
+from routes.class_routes import class_bp
 
 
 # Cargar variables de entorno según el entorno
@@ -32,6 +33,8 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
 app.register_blueprint(level_bp)
+app.register_blueprint(class_bp, url_prefix="/api")
+print(app.url_map)
 
 # Crear tablas dentro del contexto de la app
 with app.app_context():
