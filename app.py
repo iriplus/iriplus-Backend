@@ -57,8 +57,7 @@ db.init_app(app)
 
 # Register modular blueprints (routes are organized by domain).
 app.register_blueprint(level_bp)
-app.register_blueprint(class_bp, url_prefix="/api")
-print(app.url_map)
+app.register_blueprint(class_bp)
 
 # ---------------------------------------------------------------------------
 # Database initialization
