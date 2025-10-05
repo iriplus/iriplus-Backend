@@ -1,4 +1,4 @@
-"""Controller functions for Exam entity.
+"""Controller functions for Exercise entity.
 
 Exposes CRUD-like operations that are typically called from route handlers.
 Each function reads request data, interacts with the ORM, and returns a JSON
@@ -8,43 +8,41 @@ response with an appropriate HTTP status code.
 import datetime
 from flask import request, jsonify
 from sqlalchemy.exc import SQLAlchemyError
-from orm_models import db, Exam
+from orm_models import db, Exercise
 
 
-def _serialize_exam(exam: Exam) -> dict:
-    """Serialize an Exam ORM object to a JSON-safe dict.
+def _serialize_exercise(exercise: Exercise) -> dict:
+    """Serialize an Exercise ORM object to a JSON-safe dict.
 
     Args:
-        exam: Exam model instance.
+        exercise: Exercise model instance.
 
     Returns:
         A dictionary with primitive/JSON-serializable values.
     """
     return {
-        "id": exam.id,
-        "status": exam.status,
-        "notes": exam.notes,
-        "date_created": exam.date_created.isoformat() if exam.date_created else None,
-        "class": {
-            "id": exam.class_exam.id,
-            "description": exam.class_exam.description,
-        },
-        "coordinator": {
-            "id": exam.coordinator_exam.id,
-            "name": exam.coordinator_exam.name,
-            "surname": exam.coordinator_exam.surname,
-        } if exam.coordinator_exam else None,
-        "student": {
-            "id": exam.student_exam.id,
-            "name": exam.student_exam.name,
-            "surname": exam.student_exam.surname,
-        } if exam.student_exam else None,
+        "id": exercise.id,
+        "archetype": exercise.archetype,
+        "content": exercise.content,
+        "rubric": exercise.rubric,
+        "key": exercise.key,
+        "date_created": exercise.date_created.isoformat() if exercise.date_created else None,
+        "exam": {
+            "id": exercise.exam.id,
+        }
     }
 
 
-def create_exam():
-    """Create an Exam record from the JSON request body.
+def create_exercise():
+    """Create an Exercise record from the JSON request body.
 
+    Expected JSON fields:
+        - type (str)
+        - content (text)
+        - rubric (str)
+        - key (int)
+        - exam_id (int)
+    
     Returns:
         JSON payload with the new resource id on success, or an error message.
     """
@@ -53,18 +51,26 @@ def create_exam():
         return jsonify({"message": "Invalid JSON body"}), 400
 
     try:
-        status = "Pending review"
+        archetype = data["archetype"]
+        content = data["content"]
+        rubric = data["rubric"]
+        key = data["key"]
+        exam_id = data["exam_id"]
 
-        new_exam = Exam(
-            status=status,
+        new_exercise = Exercise(
+            archetype=archetype,
+            content=content,
+            rubric=rubric,
+            key=key,
+            exam_id=exam_id,
             date_created=datetime.datetime.now(),
         )
 
-        db.session.add(new_exam)
+        db.session.add(new_exercise)
         db.session.commit()
 
         return jsonify(
-            {"message": "Exam created successfully", "id": new_exam.id}
+            {"message": "Exercise created successfully", "id": new_exercise.id}
         ), 201
 
     except KeyError as err:
@@ -83,11 +89,11 @@ def create_exam():
         return jsonify({"message": f"Something went wrong: {err}"}), 500
 
 
-def get_all_exams():
-    """Return all non-deleted exams as a JSON array."""
+def get_all_exercises():
+    """Return all non-deleted exercises as a JSON array."""
     try:
-        exams = Exam.query.filter_by(date_deleted=None).all()
-        result = [_serialize_exam(exam) for exam in exams]
+        exercises = Exercise.query.filter_by(date_deleted=None).all()
+        result = [_serialize_exercise(exercise) for exercise in exercises]
         return jsonify(result), 200
     except SQLAlchemyError as err:
         return jsonify({"message": f"Database error: {err}"}), 500
@@ -95,39 +101,39 @@ def get_all_exams():
         return jsonify({"message": f"Something went wrong: {err}"}), 500
 
 
-def get_exam_by_id(exam_id: int):
-    """Return a single Exam by id if it exists and is not soft-deleted.
+def get_exercise_by_id(exercise_id: int):
+    """Return a single Exercise by id if it exists and is not soft-deleted.
 
     Args:
-        exam_id: Primary key of the Exam.
+        exercise_id: Primary key of the Exercise.
 
     Returns:
-        JSON object with the exam data or a 404 error if not found.
+        JSON object with the exercise data or a 404 error if not found.
     """
     try:
-        exam = Exam.query.get(exam_id)
-        if not exam or exam.date_deleted:
-            return jsonify({"message": "Exam not found"}), 404
+        exercise = Exercise.query.get(exercise_id)
+        if not exercise or exercise.date_deleted:
+            return jsonify({"message": "Exercise not found"}), 404
 
-        return jsonify(_serialize_exam(exam)), 200
+        return jsonify(_serialize_exercise(exercise)), 200
     except SQLAlchemyError as err:
         return jsonify({"message": f"Database error: {err}"}), 500
     except Exception as err:  # pylint: disable=broad-except
         return jsonify({"message": f"Something went wrong: {err}"}), 500
 
 
-def update_exam(exam_id: int):
-    """Update mutable fields of an existing Exam.
+def update_exercise(exercise_id: int):
+    """Update mutable fields of an existing Exercise.
 
     Args:
-        exam_id: Primary key of the Exam to update.
+        exercise_id: Primary key of the Exercise to update.
 
     Returns:
         JSON with a success message or an error status/message.
     """
-    exam = Exam.query.get(exam_id)
-    if not exam or exam.date_deleted:
-        return jsonify({"message": "Exam not found"}), 404
+    exercise = Exercise.query.get(exercise_id)
+    if not exercise or exercise.date_deleted:
+        return jsonify({"message": "Exercise not found"}), 404
 
     data = request.get_json(silent=True)
     if not data:
@@ -135,11 +141,13 @@ def update_exam(exam_id: int):
 
     try:
         # Only overwrite fields present in the payload; keep current values otherwise.
-        exam.status = data.get("status", exam.status)
-        exam.notes = data.get("notes", exam.notes)
+        exercise.archetype = data.get("archetype", exercise.archetype)
+        exercise.content = data.get("content", exercise.content)
+        exercise.rubric = data.get("rubric", exercise.rubric)
+        exercise.key = data.get("key", exercise.key)
 
         db.session.commit()
-        return jsonify({"message": "Exam updated successfully"}), 200
+        return jsonify({"message": "Exercise updated successfully"}), 200
 
     except (TypeError, ValueError) as err:
         db.session.rollback()
@@ -152,24 +160,24 @@ def update_exam(exam_id: int):
         return jsonify({"message": f"Something went wrong: {err}"}), 500
 
 
-def delete_exam(exam_id: int):
-    """Soft-delete an Exam by setting the date_deleted timestamp.
+def delete_exercise(exercise_id: int):
+    """Soft-delete an Exercise by setting the date_deleted timestamp.
 
     Args:
-        exam_id: Primary key of the Exam to soft-delete.
+        exercise_id: Primary key of the Exercise to soft-delete.
 
     Returns:
         JSON with a success message, or 404 if the class does not exist.
     """
-    exam = Exam.query.get(exam_id)
-    if not exam or exam.date_deleted:
-        return jsonify({"message": "Exam not found"}), 404
+    exercise = Exercise.query.get(exercise_id)
+    if not exercise or exercise.date_deleted:
+        return jsonify({"message": "Exercise not found"}), 404
 
     try:
         # Soft delete by timestamp; keep record for audit and FK integrity.
-        exam.date_deleted = datetime.datetime.now()
+        exercise.date_deleted = datetime.datetime.now()
         db.session.commit()
-        return jsonify({"message": "Exam deleted successfully"}), 200
+        return jsonify({"message": "Exercise deleted successfully"}), 200
 
     except SQLAlchemyError as err:
         db.session.rollback()

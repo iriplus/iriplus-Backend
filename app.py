@@ -14,6 +14,7 @@ from orm_models import db
 from routes.level_routes import level_bp
 from routes.class_routes import class_bp
 from routes.exam_routes import exam_bp
+from routes.exercise_routes import exercise_bp
 
 # ---------------------------------------------------------------------------
 # Environment configuration
@@ -60,6 +61,7 @@ db.init_app(app)
 app.register_blueprint(level_bp)
 app.register_blueprint(class_bp)
 app.register_blueprint(exam_bp)
+app.register_blueprint(exercise_bp)
 
 # ---------------------------------------------------------------------------
 # Database initialization

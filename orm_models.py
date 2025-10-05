@@ -4,7 +4,7 @@ This module defines the core entities:
 - Level: progression tiers (XP, description, cosmetics).
 - Class: class/course grouping with capacity and suggested level.
 - Exam: assessment entity linking coordinator, class and student.
-- Excercise: single task/question within an exam (kept spelling to match DB).
+- Exercise: single task/question within an exam (kept spelling to match DB).
 - User: people in the system (coordinators, teachers, students).
 
 Notes:
@@ -129,7 +129,7 @@ class Exam(BaseModel):
         notes: Optional free-form notes for the exam.
         coordinator_id: FK to the coordinating user.
         coordinator: Many-to-one: coordinating user (explicit FK to disambiguate).
-        excercises: One-to-many: tasks/questions in this exam.
+        exercises: One-to-many: tasks/questions in this exam.
         class_id: FK to the class this exam belongs to.
         class_exam: Many-to-one: the owning Class.
         student_id: FK to the student taking this exam (if per-student).
@@ -147,14 +147,14 @@ class Exam(BaseModel):
         db.ForeignKey("user.id", ondelete="CASCADE"),
         nullable=True,
     )
-    coordinator = db.relationship(
+    coordinator_exam = db.relationship(
         "User",
         back_populates="coordinator_exams",
         foreign_keys="Exam.coordinator_id",
     )
 
-    # Back-populates Excercise.exam
-    excercises = db.relationship("Excercise", back_populates="exam")
+    # Back-populates Exercise.exam
+    exercises = db.relationship("Exercise", back_populates="exam")
 
     class_id = db.Column(
         db.Integer,
@@ -175,19 +175,15 @@ class Exam(BaseModel):
     )
 
 
-class Excercise(BaseModel):
+class Exercise(BaseModel):
     """Represents a single task/question within an exam.
-
-    Note:
-        The class/table name 'Excercise' is preserved to match the existing
-        schema. If this is a typo, consider a future migration to 'Exercise'.
     """
 
-    __tablename__ = "excercise"
+    __tablename__ = "exercise"
 
-    # Column named "type" intentionally mirrors domain vocabulary.
+
     # Attribute names shadowing built-ins are acceptable as model attributes.
-    type = db.Column(db.String(255), nullable=False)
+    archetype = db.Column(db.String(255), nullable=False)
 
     content = db.Column(db.Text(1024), nullable=False)
     rubric = db.Column(db.String(255), nullable=False)
@@ -198,8 +194,8 @@ class Excercise(BaseModel):
         db.ForeignKey("exam.id", ondelete="CASCADE"),
         nullable=False,
     )
-    # Back-populates Exam.excercises
-    exam = db.relationship("Exam", back_populates="excercises")
+    # Back-populates Exam.exercises
+    exam = db.relationship("Exam", back_populates="exercises")
 
 
 class User(BaseModel):
