@@ -13,6 +13,8 @@ from dotenv import load_dotenv
 from orm_models import db
 from routes.level_routes import level_bp
 from routes.class_routes import class_bp
+from routes.user_routes import user_bp
+from routes.auth_routes import auth_bp
 from routes.exam_routes import exam_bp
 from routes.exercise_routes import exercise_bp
 
@@ -60,6 +62,8 @@ db.init_app(app)
 # Register modular blueprints (routes are organized by domain).
 app.register_blueprint(level_bp)
 app.register_blueprint(class_bp)
+app.register_blueprint(user_bp)
+app.register_blueprint(auth_bp)
 app.register_blueprint(exam_bp)
 app.register_blueprint(exercise_bp)
 
