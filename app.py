@@ -15,6 +15,7 @@ from routes.level_routes import level_bp
 from routes.class_routes import class_bp
 from routes.user_routes import user_bp
 from routes.auth_routes import auth_bp
+from routes.exam_routes import exam_bp
 
 # ---------------------------------------------------------------------------
 # Environment configuration
@@ -62,6 +63,7 @@ app.register_blueprint(level_bp)
 app.register_blueprint(class_bp)
 app.register_blueprint(user_bp)
 app.register_blueprint(auth_bp)
+app.register_blueprint(exam_bp)
 
 # ---------------------------------------------------------------------------
 # Database initialization
