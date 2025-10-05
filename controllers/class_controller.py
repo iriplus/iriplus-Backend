@@ -69,20 +69,20 @@ def create_class():
             {"message": "Class created successfully", "id": new_class.id}
         ), 201
 
-    except KeyError as err:
+    except KeyError as e:
         # Missing required field in the payload.
-        return jsonify({"message": f"Missing required field: {err}"}), 400
-    except (TypeError, ValueError) as err:
+        return jsonify({"message": f"Missing required field: {e}"}), 400
+    except (TypeError, ValueError) as e:
         # Invalid types (e.g., non-numeric max_capacity).
-        return jsonify({"message": f"Invalid field value: {err}"}), 400
-    except SQLAlchemyError as err:
+        return jsonify({"message": f"Invalid field value: {e}"}), 400
+    except SQLAlchemyError as e:
         # Database/transaction error (log 'err' detail in real apps).
         db.session.rollback()
-        return jsonify({"message": f"Database error: {err}"}), 500
-    except Exception as err:  # pylint: disable=broad-except
+        return jsonify({"message": f"Database error: {e}"}), 500
+    except Exception as e:  # pylint: disable=broad-except
         # Catch-all for unexpected errors.
         db.session.rollback()
-        return jsonify({"message": f"Something went wrong: {err}"}), 500
+        return jsonify({"message": f"Something went wrong: {e}"}), 500
 
 
 def get_all_classes():
