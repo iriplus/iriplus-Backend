@@ -6,9 +6,11 @@ response with an appropriate HTTP status code.
 """
 
 import datetime
+from typing import cast, List
 from flask import request, jsonify
 from sqlalchemy.exc import SQLAlchemyError
-from orm_models import db, Exam
+from orm_models import db, Exam, User, Class, Exercise
+from user_type_enum import UserType
 
 
 def _serialize_exam(exam: Exam) -> dict:
@@ -25,26 +27,43 @@ def _serialize_exam(exam: Exam) -> dict:
         "status": exam.status,
         "notes": exam.notes,
         "date_created": exam.date_created.isoformat() if exam.date_created else None,
-        "class": {
-            "id": exam.class_exam.id,
-            "description": exam.class_exam.description,
-        },
-        "coordinator": {
-            "id": exam.coordinator_exam.id,
-            "name": exam.coordinator_exam.name,
-            "surname": exam.coordinator_exam.surname,
-        } if exam.coordinator_exam else None,
-        "student": {
-            "id": exam.student_exam.id,
-            "name": exam.student_exam.name,
-            "surname": exam.student_exam.surname,
-        } if exam.student_exam else None,
+        "class": (
+            {
+                "id": exam.class_exam.id,
+                "description": exam.class_exam.description,
+            } if exam.class_exam else None
+        ),
+        "coordinator_id": (
+            {
+                "id": exam.coordinator_exam.id,
+                "name": exam.coordinator_exam.name,
+                "surname": exam.coordinator_exam.surname,
+        } if exam.coordinator_exam else None
+        ),
+        "student": (
+            {
+                "id": exam.student_exam.id,
+                "name": exam.student_exam.name,
+                "surname": exam.student_exam.surname,
+        } if exam.student_exam else None
+        ),
+        "exercises": [
+            {"id": exercise.id, "archetype": exercise.archetype, "key": exercise.key}
+            for exercise in cast(List[Exercise], exam.exercises)
+        ],
     }
 
 
 def create_exam():
     """Create an Exam record from the JSON request body.
 
+    Expected JSON fields:
+        - status (optional)
+        - notes (optional)
+        - coordinator_id (optional)
+        - student_id (optional)
+        - class_id (optional)
+    
     Returns:
         JSON payload with the new resource id on success, or an error message.
     """
@@ -54,9 +73,35 @@ def create_exam():
 
     try:
         status = "Pending review"
+        notes = "Empty notes"
+
+        coordinator_id = data.get("coordinator_id")
+        student_id = data.get("student_id")
+        class_id = data.get("class_id")
+
+        # --- Validate relationships ---
+        if coordinator_id:
+            coordinator = User.query.get(coordinator_id)
+            if not coordinator or coordinator.type not in [UserType.COORDINATOR]:
+                return jsonify({"message": "Coordinator must be a COORDINATOR"}), 400
+
+        if student_id:
+            student = User.query.get(student_id)
+            if not student or student.type != UserType.STUDENT:
+                return jsonify({"message": "Student must be of type STUDENT."}), 400
+
+        if class_id:
+            class_obj = Class.query.get(class_id)
+            if not class_obj or class_obj.date_deleted:
+                return jsonify({"message": "Class not found or deleted."}), 404
+
 
         new_exam = Exam(
             status=status,
+            notes=notes,
+            coordinator_id=coordinator_id,
+            student_id=student_id,
+            class_id=class_id,
             date_created=datetime.datetime.now(),
         )
 
@@ -134,9 +179,28 @@ def update_exam(exam_id: int):
         return jsonify({"message": "Invalid JSON body"}), 400
 
     try:
-        # Only overwrite fields present in the payload; keep current values otherwise.
+        # Update base fields
         exam.status = data.get("status", exam.status)
         exam.notes = data.get("notes", exam.notes)
+
+        # Update relationships if provided
+        if data.get("coordinator_id"):
+            coordinator = User.query.get(data["coordinator_id"])
+            if not coordinator or coordinator.type not in [UserType.COORDINATOR, UserType.TEACHER]:
+                return jsonify({"message": "Invalid coordinator type"}), 400
+            exam.coordinator_id = data["coordinator_id"]
+
+        if data.get("student_id"):
+            student = User.query.get(data["student_id"])
+            if not student or student.type != UserType.STUDENT:
+                return jsonify({"message": "Invalid student type"}), 400
+            exam.student_id = data["student_id"]
+
+        if data.get("class_id"):
+            class_obj = Class.query.get(data["class_id"])
+            if not class_obj or class_obj.date_deleted:
+                return jsonify({"message": "Class not found or deleted"}), 404
+            exam.class_id = data["class_id"]
 
         db.session.commit()
         return jsonify({"message": "Exam updated successfully"}), 200

@@ -236,7 +236,7 @@ class User(BaseModel):
     # Back-populates Exam.coordinator
     coordinator_exams = db.relationship(
         "Exam",
-        back_populates="coordinator",
+        back_populates="coordinator_exam",
         foreign_keys="Exam.coordinator_id",
     )
 
