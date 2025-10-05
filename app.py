@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from orm_models import db
 from routes.level_routes import level_bp
 from routes.class_routes import class_bp
+from routes.exam_routes import exam_bp
 
 # ---------------------------------------------------------------------------
 # Environment configuration
@@ -58,6 +59,7 @@ db.init_app(app)
 # Register modular blueprints (routes are organized by domain).
 app.register_blueprint(level_bp)
 app.register_blueprint(class_bp)
+app.register_blueprint(exam_bp)
 
 # ---------------------------------------------------------------------------
 # Database initialization
