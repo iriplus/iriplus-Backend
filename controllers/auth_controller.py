@@ -7,7 +7,7 @@ against stored bcrypt password hashes.
 import bcrypt
 from flask import request, jsonify
 from orm_models import User
-from user_type_enum import UserType
+from utils.types_enum import UserType
 
 
 def login():

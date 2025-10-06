@@ -10,7 +10,7 @@ from typing import cast, List
 from flask import request, jsonify
 from sqlalchemy.exc import SQLAlchemyError
 from orm_models import db, Exam, User, Class, Exercise
-from user_type_enum import UserType
+from utils.types_enum import UserType
 
 
 def _serialize_exam(exam: Exam) -> dict:

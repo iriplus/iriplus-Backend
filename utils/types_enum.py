@@ -1,7 +1,7 @@
-"""User type enumeration definition.
+"""Different types enumeration definition.
 
-This module defines the UserType enum, which is used to categorize 
-users in the system by their role.
+This module defines the different types enum, which is used to categorize 
+different types of entities in the system
 """
 
 import enum
@@ -18,3 +18,6 @@ class UserType(enum.Enum):
 
     # Student role: represents learners enrolled in courses
     STUDENT = "Student"
+
+class ExamType(enum.Enum):
+    """Enumeration for different exam states in the system."""

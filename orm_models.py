@@ -15,7 +15,7 @@ Notes:
 import datetime  # stdlib
 from flask_sqlalchemy import SQLAlchemy  # third-party
 from sqlalchemy import Enum  # third-party
-from user_type_enum import UserType  # local
+from utils.types_enum import UserType  # local
 
 db = SQLAlchemy()
 
@@ -159,7 +159,7 @@ class Exam(BaseModel):
     class_id = db.Column(
         db.Integer,
         db.ForeignKey("class.id", ondelete="CASCADE"),
-        nullable=True,
+        nullable=False,
     )
     class_exam = db.relationship("Class", back_populates="exams")
 
