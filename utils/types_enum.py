@@ -19,5 +19,8 @@ class UserType(enum.Enum):
     # Student role: represents learners enrolled in courses
     STUDENT = "Student"
 
-class ExamType(enum.Enum):
+class ExamState(enum.Enum):
+    """Enumeration for different exam states in the system."""
+
+class ExerciseType(enum.Enum):
     """Enumeration for different exam states in the system."""
