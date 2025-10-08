@@ -49,19 +49,19 @@ def get_user_route(user_id: int):
 # Bulk retrieval endpoints by role
 # ---------------------------------------------------------------------------
 
-@user_bp.route("/api/user/students", methods=["GET"])
+@user_bp.route("/api/user/student", methods=["GET"])
 def get_all_students():
     """HTTP GET endpoint to retrieve all Student users."""
     return controller_get_all_users("Student")
 
 
-@user_bp.route("/api/user/teachers", methods=["GET"])
+@user_bp.route("/api/user/teacher", methods=["GET"])
 def get_all_teachers():
     """HTTP GET endpoint to retrieve all Teacher users."""
     return controller_get_all_users("Teacher")
 
 
-@user_bp.route("/api/user/coordinators", methods=["GET"])
+@user_bp.route("/api/user/coordinator", methods=["GET"])
 def get_all_coordinators():
     """HTTP GET endpoint to retrieve all Coordinator users."""
     return controller_get_all_users("Coordinator")
