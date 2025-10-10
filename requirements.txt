@@ -6,4 +6,4 @@ Flask-migrate
 cryptography
 python-dotenv
 bcrypt
-
+gunicorn
