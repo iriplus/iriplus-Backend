@@ -122,7 +122,7 @@ def update_level(level_id: int):
         level.cosmetic = data.get("cosmetic", level.cosmetic)
         level.min_xp = int(data.get("min_xp", level.min_xp))
         db.session.commit()
-        return jsonify ({"message": f"Level {level.id} updated succesfully"}, 200)
+        return jsonify({"message": f"Level {level.id} updated succesfully"}), 200
     except (TypeError, ValueError) as err:
         db.session.rollback()
         return jsonify({"message": f"Invalid field value: {err}"}), 400
