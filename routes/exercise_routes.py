@@ -20,7 +20,7 @@ exercise_bp = Blueprint("exercise_bp", __name__)
 @exercise_bp.route("/api/exercise", methods=["POST"])
 def create_exercise():
     """HTTP POST endpoint to create a new exercise."""
-    return controller_create_exercise()
+    return controller_create_exercise(exercise_archetype="Test archetype")
 
 
 @exercise_bp.route("/api/exercise", methods=["GET"])

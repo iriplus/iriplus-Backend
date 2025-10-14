@@ -86,7 +86,6 @@ def create_user(user_type: str):
             student_level_id=data.get("student_level_id"),
             student_class_id=data.get("student_class_id"),
         )
-        
         # Commit transaction.
         db.session.add(new_user)
         db.session.commit()

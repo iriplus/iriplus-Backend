@@ -20,7 +20,7 @@ exam_bp = Blueprint("exam_bp", __name__)
 @exam_bp.route("/api/exam", methods=["POST"])
 def create_exam():
     """HTTP POST endpoint to create a new exam."""
-    return controller_create_exam()
+    return controller_create_exam(exam_status="Test Exam")
 
 
 @exam_bp.route("/api/exam", methods=["GET"])
