@@ -54,7 +54,7 @@ def _serialize_exam(exam: Exam) -> dict:
     }
 
 
-def create_exam(exam_status: str):
+def create_exam(exam_status: ExamStatus):
     """Create an Exam record from the JSON request body.
 
     Expected JSON fields:
@@ -72,9 +72,6 @@ def create_exam(exam_status: str):
         return jsonify({"message": "Invalid JSON body"}), 400
 
     try:
-        exam_enum = ExamStatus[exam_status.upper()]
-        notes = "Empty notes"
-
         coordinator_id = data.get("coordinator_id")
         student_id = data.get("student_id")
         class_id = data.get("class_id")
@@ -97,8 +94,7 @@ def create_exam(exam_status: str):
 
 
         new_exam = Exam(
-            status=exam_enum,
-            notes=notes,
+            status=exam_status.value,
             coordinator_id=coordinator_id,
             student_id=student_id,
             class_id=class_id,

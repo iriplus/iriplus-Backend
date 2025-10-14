@@ -34,7 +34,7 @@ def _serialize_exercise(exercise: Exercise) -> dict:
     }
 
 
-def create_exercise(exercise_archetype: str):
+def create_exercise(exercise_archetype: ExerciseArchetype):
     """Create an Exercise record from the JSON request body.
 
     Expected JSON fields:
@@ -52,14 +52,14 @@ def create_exercise(exercise_archetype: str):
         return jsonify({"message": "Invalid JSON body"}), 400
 
     try:
-        archetype_enum = ExerciseArchetype[exercise_archetype.upper()]
+        archetype_enum = exercise_archetype
         content = data["content"]
         rubric = data["rubric"]
         key = data["key"]
         exam_id = data["exam_id"]
 
         new_exercise = Exercise(
-            archetype=archetype_enum,
+            archetype=archetype_enum.value,
             content=content,
             rubric=rubric,
             key=key,
