@@ -1,21 +1,50 @@
-"""Blueprint routes for authentication endpoints.
+"""
+Authentication routes.
 
-This module defines routes related to user authentication.
-It delegates the login logic to the corresponding controller function.
+Maps HTTP endpoints to the corresponding controller functions.
+Blueprint is namespace-only; URL prefix must be assigned in app.py.
 """
 
 from flask import Blueprint
-from controllers.auth_controller import login as controller_login
+from controllers.auth_controller import (
+    login_controller,
+    me_controller,
+    refresh_controller,
+    logout_controller,
+)
 
-# Create a Blueprint dedicated to authentication operations.
-auth_bp = Blueprint("auth_bp", __name__)
+# Blueprint name must be unique across the application
+auth_bp = Blueprint("auth", __name__)
 
 
-@auth_bp.route("/api/auth/login", methods=["POST"])
+@auth_bp.post("/login")
 def login():
-    """HTTP POST endpoint to authenticate a user.
-
-    Expects a JSON payload with email and password.
-    Delegates validation to the controller.
     """
-    return controller_login()
+    Login endpoint.
+    Delegates authentication to login_controller.
+    """
+    return login_controller()
+
+
+@auth_bp.get("/me")
+def me():
+    """
+    Get authenticated user profile.
+    """
+    return me_controller()
+
+
+@auth_bp.post("/refresh")
+def refresh():
+    """
+    Refresh JWT cookie for authenticated user.
+    """
+    return refresh_controller()
+
+
+@auth_bp.post("/logout")
+def logout():
+    """
+    Logout endpoint. Clears JWT cookie.
+    """
+    return logout_controller()

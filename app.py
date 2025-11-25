@@ -10,6 +10,8 @@ Run this file directly to start the development server.
 import os
 from flask import Flask
 from dotenv import load_dotenv
+from flask_jwt_extended import JWTManager
+from flask_cors import CORS
 from orm_models import db
 from routes.level_routes import level_bp
 from routes.class_routes import class_bp
@@ -18,14 +20,13 @@ from routes.auth_routes import auth_bp
 from routes.exam_routes import exam_bp
 from routes.exercise_routes import exercise_bp
 
-# ---------------------------------------------------------------------------
-# Environment configuration
-# ---------------------------------------------------------------------------
 
-# Detect current environment (defaults to 'dev' if ENVIRONMENT is not set).
+# ----------------------------------------------------------------------------
+# Environment configuration
+# ----------------------------------------------------------------------------
+
 env_name = os.getenv("ENVIRONMENT", "dev")
 
-# Load environment-specific variables from .env files.
 if env_name == "production":
     load_dotenv(".env.production")
 elif env_name == "testing":
@@ -33,33 +34,46 @@ elif env_name == "testing":
 else:
     load_dotenv(".env.dev")
 
-# Database connection parameters loaded from environment variables.
 DB_HOST = os.getenv("DB_HOST")
-DB_PORT = os.getenv("DB_PORT")  # Currently unused in connection string
 DB_NAME = os.getenv("DB_NAME")
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:4200")   # para CORS
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")           # obligatorio
 
-# ---------------------------------------------------------------------------
-# Flask app and database setup
-# ---------------------------------------------------------------------------
 
-# Create the Flask application instance.
+# ----------------------------------------------------------------------------
+# Flask app setup
+# ----------------------------------------------------------------------------
+
 app = Flask(__name__)
 
-# Configure SQLAlchemy connection string (MySQL + PyMySQL dialect).
-# Note: DB_PORT is not interpolated here; add it if your DB runs on non-default port.
 app.config["SQLALCHEMY_DATABASE_URI"] = (
     f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
 )
-
-# Disable modification tracking to reduce overhead (recommended).
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# Bind SQLAlchemy to the Flask app.
-db.init_app(app)
+# JWT CONFIG - usando cookies HttpOnly
+app.config["JWT_SECRET_KEY"] = JWT_SECRET_KEY
+app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
+app.config["JWT_COOKIE_HTTPONLY"] = True
+app.config["JWT_COOKIE_SECURE"] = False if env_name == "dev" else True
+app.config["JWT_COOKIE_SAMESITE"] = "None" if env_name == "production" else "Lax"
+app.config["JWT_COOKIE_CSRF_PROTECT"] = False
+# si querés protección CSRF está integrada, luego se habilita en el controller si se desea
+# app.config["JWT_COOKIE_CSRF_PROTECT"] = True
 
-# Register modular blueprints (routes are organized by domain).
+# permitir peticiones del frontend con cookies
+CORS(app, supports_credentials=True, resources={r"/*": {"origins": "*"}})
+
+# inicializar SQLAlchemy y JWT
+db.init_app(app)
+jwt = JWTManager(app)
+
+
+# ----------------------------------------------------------------------------
+# Register blueprints
+# ----------------------------------------------------------------------------
 app.register_blueprint(level_bp)
 app.register_blueprint(class_bp)
 app.register_blueprint(user_bp)
@@ -67,20 +81,17 @@ app.register_blueprint(auth_bp)
 app.register_blueprint(exam_bp)
 app.register_blueprint(exercise_bp)
 
-# ---------------------------------------------------------------------------
-# Database initialization
-# ---------------------------------------------------------------------------
 
-# Create tables automatically within app context if they do not exist.
-# Consider using Alembic migrations for production deployments instead.
+# ----------------------------------------------------------------------------
+# Database init
+# ----------------------------------------------------------------------------
 with app.app_context():
     db.create_all()
     print("✅ Tables created successfully")
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 
-# When run directly, start the Flask development server.
+# ----------------------------------------------------------------------------
+# Run server
+# ----------------------------------------------------------------------------
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug = env_name == "dev")

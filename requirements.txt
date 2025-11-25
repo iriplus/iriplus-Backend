@@ -7,3 +7,6 @@ cryptography
 python-dotenv
 bcrypt
 gunicorn
+flask-bcrypt
+flask-jwt-extended
+flask-cors
