@@ -12,6 +12,7 @@ from controllers.user_controller import (
     delete_user as controller_delete_user,
     get_all_users as controller_get_all_users,
 )
+from utils.types_enum import UserType
 
 # Create a Blueprint dedicated to user-related routes.
 user_bp = Blueprint("user_bp", __name__)
@@ -20,19 +21,19 @@ user_bp = Blueprint("user_bp", __name__)
 @user_bp.route("/api/user/student", methods=["POST"])
 def create_student():
     """HTTP POST endpoint to create a Student user."""
-    return controller_create_user(user_type="Student")
+    return controller_create_user(user_type=UserType.STUDENT)
 
 
 @user_bp.route("/api/user/teacher", methods=["POST"])
 def create_teacher():
     """HTTP POST endpoint to create a Teacher user."""
-    return controller_create_user(user_type="Teacher")
+    return controller_create_user(user_type=UserType.TEACHER)
 
 
 @user_bp.route("/api/user/coordinator", methods=["POST"])
 def create_coordinator():
     """HTTP POST endpoint to create a Coordinator user."""
-    return controller_create_user(user_type="Coordinator")
+    return controller_create_user(user_type=UserType.COORDINATOR)
 
 
 @user_bp.route("/api/user/<int:user_id>", methods=["GET"])

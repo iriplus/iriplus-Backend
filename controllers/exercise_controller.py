@@ -9,6 +9,7 @@ import datetime
 from flask import request, jsonify
 from sqlalchemy.exc import SQLAlchemyError
 from orm_models import db, Exercise
+from utils.types_enum import ExerciseArchetype
 
 
 def _serialize_exercise(exercise: Exercise) -> dict:
@@ -33,11 +34,11 @@ def _serialize_exercise(exercise: Exercise) -> dict:
     }
 
 
-def create_exercise():
+def create_exercise(exercise_archetype: ExerciseArchetype):
     """Create an Exercise record from the JSON request body.
 
     Expected JSON fields:
-        - type (str)
+        - archetype (str)
         - content (text)
         - rubric (str)
         - key (int)
@@ -51,14 +52,14 @@ def create_exercise():
         return jsonify({"message": "Invalid JSON body"}), 400
 
     try:
-        archetype = data["archetype"]
+        archetype_enum = exercise_archetype
         content = data["content"]
         rubric = data["rubric"]
         key = data["key"]
         exam_id = data["exam_id"]
 
         new_exercise = Exercise(
-            archetype=archetype,
+            archetype=archetype_enum.value,
             content=content,
             rubric=rubric,
             key=key,

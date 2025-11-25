@@ -10,7 +10,7 @@ from typing import cast, List
 from flask import request, jsonify
 from sqlalchemy.exc import SQLAlchemyError
 from orm_models import db, Exam, User, Class, Exercise
-from utils.types_enum import UserType
+from utils.types_enum import UserType, ExamStatus
 
 
 def _serialize_exam(exam: Exam) -> dict:
@@ -54,11 +54,11 @@ def _serialize_exam(exam: Exam) -> dict:
     }
 
 
-def create_exam():
+def create_exam(exam_status: ExamStatus):
     """Create an Exam record from the JSON request body.
 
     Expected JSON fields:
-        - status (optional)
+        - status (required)
         - notes (optional)
         - coordinator_id (optional)
         - student_id (optional)
@@ -72,9 +72,6 @@ def create_exam():
         return jsonify({"message": "Invalid JSON body"}), 400
 
     try:
-        status = "Pending review"
-        notes = "Empty notes"
-
         coordinator_id = data.get("coordinator_id")
         student_id = data.get("student_id")
         class_id = data.get("class_id")
@@ -97,8 +94,7 @@ def create_exam():
 
 
         new_exam = Exam(
-            status=status,
-            notes=notes,
+            status=exam_status.value,
             coordinator_id=coordinator_id,
             student_id=student_id,
             class_id=class_id,

@@ -12,6 +12,7 @@ from controllers.exam_controller import (
     update_exam as controller_update_exam,
     delete_exam as controller_delete_exam,
 )
+from utils.types_enum import ExamStatus
 
 # Create a Blueprint for Exam-related routes.
 exam_bp = Blueprint("exam_bp", __name__)
@@ -20,7 +21,7 @@ exam_bp = Blueprint("exam_bp", __name__)
 @exam_bp.route("/api/exam", methods=["POST"])
 def create_exam():
     """HTTP POST endpoint to create a new exam."""
-    return controller_create_exam()
+    return controller_create_exam(exam_status=ExamStatus.TEST_EXAM)
 
 
 @exam_bp.route("/api/exam", methods=["GET"])

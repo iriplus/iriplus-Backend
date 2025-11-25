@@ -12,6 +12,7 @@ from controllers.exercise_controller import (
     update_exercise as controller_update_exercise,
     delete_exercise as controller_delete_exercise,
 )
+from utils.types_enum import ExerciseArchetype
 
 # Create a Blueprint for Exercise-related routes.
 exercise_bp = Blueprint("exercise_bp", __name__)
@@ -20,7 +21,7 @@ exercise_bp = Blueprint("exercise_bp", __name__)
 @exercise_bp.route("/api/exercise", methods=["POST"])
 def create_exercise():
     """HTTP POST endpoint to create a new exercise."""
-    return controller_create_exercise()
+    return controller_create_exercise(exercise_archetype=ExerciseArchetype.TEST_ARCHETYPE)
 
 
 @exercise_bp.route("/api/exercise", methods=["GET"])

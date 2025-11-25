@@ -43,7 +43,7 @@ def serialize_user(user: User) -> dict:
 # Controller functions
 # ---------------------------------------------------------------------------
 
-def create_user(user_type: str):
+def create_user(user_type: UserType):
     """Create a new user of a given type (Student, Teacher, Coordinator).
 
     Args:
@@ -65,8 +65,6 @@ def create_user(user_type: str):
         }), 400
 
     try:
-        # Convert string to UserType enum (raises KeyError if invalid).
-        user_enum = UserType[user_type.upper()]
 
         # Hash the provided password using bcrypt with salt.
         hashed_password = bcrypt.hashpw(
@@ -80,13 +78,12 @@ def create_user(user_type: str):
             email=data["email"],
             passwd=hashed_password,
             dni=data["dni"],
-            type=user_enum,
+            type=user_type,
             accumulated_xp=data.get("accumulated_xp", 0),
             profile_picture=data.get("profile_picture"),
             student_level_id=data.get("student_level_id"),
             student_class_id=data.get("student_class_id"),
         )
-        
         # Commit transaction.
         db.session.add(new_user)
         db.session.commit()
