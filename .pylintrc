@@ -26,6 +26,7 @@ disable=
     W0611, # unused-import (ej: db, Base, usados solo por side-effects)
     W0613, # unused-argument (handlers y signals reciben args que no usás)
     W0221, # arguments-differ (override de métodos como __init__ en modelos)
+    C0114, # missing module docstring
 
 # Confidence levels of issues to be reported
 confidence=HIGH,CONTROL_FLOW,INFERENCE,INFERENCE_FAILURE,UNDEFINED

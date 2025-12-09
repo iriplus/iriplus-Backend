@@ -14,47 +14,149 @@ from controllers.exam_controller import (
 )
 from utils.types_enum import ExamStatus
 
-# Create a Blueprint for Exam-related routes.
 exam_bp = Blueprint("exam_bp", __name__)
 
 
 @exam_bp.route("/api/exam", methods=["POST"])
 def create_exam():
-    """HTTP POST endpoint to create a new exam."""
+    """
+    Create a new Exam
+    ---
+    tags:
+      - Exam
+    summary: Create a new Exam
+    description: Create a new Exam entity for a given class. Status is set automatically to TEST_EXAM.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamInput'
+    responses:
+      201:
+        description: Exam created
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Exam'
+      400:
+        description: Invalid input payload
+      500:
+        description: Server error
+    """
     return controller_create_exam(exam_status=ExamStatus.TEST_EXAM)
 
 
 @exam_bp.route("/api/exam", methods=["GET"])
 def get_all_exams():
-    """HTTP GET endpoint to retrieve all Exams."""
+    """
+    List all Exams
+    ---
+    tags:
+      - Exam
+    summary: List all Exams
+    description: Retrieve all Exams that have not been soft-deleted.
+    responses:
+      200:
+        description: OK
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Exam'
+      500:
+        description: Server error
+    """
     return controller_get_all_exams()
 
 
 @exam_bp.route("/api/exam/<int:exam_id>", methods=["GET"])
 def get_exam_by_id(exam_id: int):
-    """HTTP GET endpoint to retrieve a Exam by its ID.
-
-    Args:
-        exam_id: Primary key of the Exam to retrieve.
+    """
+    Get an Exam by ID
+    ---
+    tags:
+      - Exam
+    summary: Retrieve an Exam
+    description: Get an Exam by its ID.
+    parameters:
+      - in: path
+        name: exam_id
+        schema:
+          type: integer
+        required: true
+        description: Primary key of the Exam
+    responses:
+      200:
+        description: Exam found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Exam'
+      404:
+        description: Exam not found
+      500:
+        description: Server error
     """
     return controller_get_exam_by_id(exam_id)
 
 
 @exam_bp.route("/api/exam/<int:exam_id>", methods=["PUT"])
 def update_exam(exam_id: int):
-    """HTTP PUT endpoint to update an existing Exam.
-
-    Args:
-        exam_id: Primary key of the Exam to update.
+    """
+    Update an Exam
+    ---
+    tags:
+      - Exam
+    summary: Update an existing Exam
+    description: Update fields for an existing Exam entity.
+    parameters:
+      - in: path
+        name: exam_id
+        schema:
+          type: integer
+        required: true
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamInput'
+    responses:
+      200:
+        description: Exam updated
+      400:
+        description: Invalid input payload
+      404:
+        description: Exam not found
+      500:
+        description: Server error
     """
     return controller_update_exam(exam_id)
 
 
 @exam_bp.route("/api/exam/<int:exam_id>", methods=["DELETE"])
 def delete_exam(exam_id: int):
-    """HTTP DELETE endpoint to soft-delete a Exam.
-
-    Args:
-        exam_id: Primary key of the Exam to delete.
+    """
+    Soft delete an Exam
+    ---
+    tags:
+      - Exam
+    summary: Soft delete an Exam
+    description: Perform a soft delete of an Exam by setting date_deleted.
+    parameters:
+      - in: path
+        name: exam_id
+        schema:
+          type: integer
+        required: true
+    responses:
+      200:
+        description: Exam deleted
+      404:
+        description: Exam not found
+      500:
+        description: Server error
     """
     return controller_delete_exam(exam_id)

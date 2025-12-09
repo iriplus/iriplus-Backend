@@ -12,6 +12,7 @@ from flask import Flask
 from dotenv import load_dotenv
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
+from flasgger import Swagger
 from orm_models import db
 from routes.level_routes import level_bp
 from routes.class_routes import class_bp
@@ -19,6 +20,8 @@ from routes.user_routes import user_bp
 from routes.auth_routes import auth_bp
 from routes.exam_routes import exam_bp
 from routes.exercise_routes import exercise_bp
+from swagger.config import swagger_config
+from swagger.template import swagger_template
 
 
 # ----------------------------------------------------------------------------
@@ -38,8 +41,8 @@ DB_HOST = os.getenv("DB_HOST")
 DB_NAME = os.getenv("DB_NAME")
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:4200")   # para CORS
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")           # obligatorio
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:4200")   # for CORS
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")           # mandatory
 
 
 # ----------------------------------------------------------------------------
@@ -53,23 +56,28 @@ app.config["SQLALCHEMY_DATABASE_URI"] = (
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# JWT CONFIG - usando cookies HttpOnly
+# JWT CONFIG - using cookies HttpOnly
 app.config["JWT_SECRET_KEY"] = JWT_SECRET_KEY
 app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
 app.config["JWT_COOKIE_HTTPONLY"] = True
 app.config["JWT_COOKIE_SECURE"] = False if env_name == "dev" else True
 app.config["JWT_COOKIE_SAMESITE"] = "None" if env_name == "production" else "Lax"
 app.config["JWT_COOKIE_CSRF_PROTECT"] = False
-# si querés protección CSRF está integrada, luego se habilita en el controller si se desea
+# if CSRF protection is wanted it is integrated, you have to activate it on the controller if you wish to
 # app.config["JWT_COOKIE_CSRF_PROTECT"] = True
 
-# permitir peticiones del frontend con cookies
+# allow frontend petitions with cookies
 CORS(app, supports_credentials=True, resources={r"/*": {"origins": "*"}})
 
-# inicializar SQLAlchemy y JWT
+# initialize SQLAlchemy and JWT
 db.init_app(app)
 jwt = JWTManager(app)
 
+# ----------------------------------------------------------------------------
+# Swagger/OpenAPI configuration
+# ----------------------------------------------------------------------------
+
+Swagger(app, config=swagger_config, template=swagger_template)
 
 # ----------------------------------------------------------------------------
 # Register blueprints
@@ -93,5 +101,12 @@ with app.app_context():
 # ----------------------------------------------------------------------------
 # Run server
 # ----------------------------------------------------------------------------
+@app.route("/")
+def root():
+    """
+    This function returns a message when loading the '/' route so that it erases noise in the logs
+    """
+    return {"message": "IRI+ API running"}, 200
+
 if __name__ == "__main__":
     app.run(debug = env_name == "dev")

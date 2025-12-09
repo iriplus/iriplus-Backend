@@ -10,3 +10,4 @@ gunicorn
 flask-bcrypt
 flask-jwt-extended
 flask-cors
+flasgger
