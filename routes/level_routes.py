@@ -16,58 +16,154 @@ from controllers.level_controller import soft_delete_level as delete_level_contr
 # Create a Blueprint for Level-related routes.
 level_bp = Blueprint("level_bp", __name__)
 
+
 @level_bp.route("/api/level", methods=["POST"])
 @jwt_required()
 def create_level():
-    """HTTP POST endpoint to create a new Level.
-
-    The request payload is processed by the controller, which handles
-    validation, persistence, and response formatting.
+    """
+    Create a new Level
+    ---
+    tags:
+      - Level
+    summary: Create a new Level
+    description: Create a new Level entity with description, cosmetic and min_xp.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LevelInput'
+    responses:
+      201:
+        description: Level created successfully
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                id:
+                  type: integer
+      400:
+        description: Invalid JSON body
+      500:
+        description: Server error
     """
     return controller_create_level()
+
 
 @level_bp.route("/api/level", methods=["GET"])
 @jwt_required()
 def get_all_levels():
-    """HTTP GET endpoint to retrieve all non-deleted levels.
-
-    Returns:
-        Flask Response: JSON array with serialized Level data.
+    """
+    List all Levels
+    ---
+    tags:
+      - Level
+    summary: List all non-deleted Levels
+    description: Retrieve a list of all Levels that have not been soft-deleted.
+    responses:
+      200:
+        description: OK
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Level'
+      500:
+        description: Server error
     """
     return get_all_levels_controller()
 
+
 @level_bp.route("/api/level/<int:level_id>", methods=["GET"])
 def get_one_level(level_id: int):
-    """HTTP GET endpoint to retrieve a Level by its ID.
-
-    Args:
-        level_id (int): Primary key of the Level.
-
-    Returns:
-        Flask Response: JSON object with Level data or a 404 message.
+    """
+    Get a Level by ID
+    ---
+    tags:
+      - Level
+    summary: Retrieve a Level
+    description: Return a Level by its ID if it exists and is not soft-deleted.
+    parameters:
+      - in: path
+        name: level_id
+        schema:
+          type: integer
+        required: true
+        description: Primary key of the Level
+    responses:
+      200:
+        description: Level found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Level'
+      404:
+        description: Level not found
+      500:
+        description: Server error
     """
     return get_one_controller(level_id)
 
+
 @level_bp.route("/api/level/<int:level_id>", methods=["PUT"])
 def update_level(level_id: int):
-    """HTTP PUT endpoint to update a Level.
-
-    Args:
-        level_id (int): Primary key of the Level to update.
-
-    Returns:
-        Flask Response: JSON message indicating success or failure.
+    """
+    Update a Level
+    ---
+    tags:
+      - Level
+    summary: Update an existing Level
+    description: Update fields of a Level entity.
+    parameters:
+      - in: path
+        name: level_id
+        schema:
+          type: integer
+        required: true
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LevelInput'
+    responses:
+      200:
+        description: Level updated
+      400:
+        description: Invalid JSON body or invalid fields
+      404:
+        description: Level not found
+      500:
+        description: Server error
     """
     return update_level_controller(level_id)
 
+
 @level_bp.route("/api/level/<int:level_id>", methods=["DELETE"])
 def delete_level(level_id: int):
-    """HTTP DELETE endpoint to perform a soft delete on a Level.
-
-    Args:
-        level_id (int): Primary key of the Level to delete.
-
-    Returns:
-        Flask Response: JSON message confirming deletion or error details.
+    """
+    Soft delete a Level
+    ---
+    tags:
+      - Level
+    summary: Soft delete a Level
+    description: Perform a soft delete of a Level by setting date_deleted.
+    parameters:
+      - in: path
+        name: level_id
+        schema:
+          type: integer
+        required: true
+    responses:
+      200:
+        description: Level deleted
+      404:
+        description: Level not found
+      500:
+        description: Server error
     """
     return delete_level_controller(level_id)

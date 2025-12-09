@@ -21,6 +21,29 @@ auth_bp = Blueprint("auth", __name__)
 @auth_bp.post("/login")
 def login():
     """
+    User login
+    ---
+    tags:
+      - Auth
+    summary: Authenticate a user and set JWT cookies
+    description: Validate user credentials and issue JWT cookies for authentication.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LoginInput'
+    responses:
+      200:
+        description: Login successful
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthResponse'
+      400:
+        description: Invalid credentials
+      500:
+        description: Server error
     Handle user login requests.
 
     Returns:
@@ -33,6 +56,23 @@ def login():
 @auth_bp.get("/me")
 def me():
     """
+    Get current authenticated user
+    ---
+    tags:
+      - Auth
+    summary: Get the authenticated user profile
+    description: Return the profile of the authenticated user based on the JWT cookie.
+    responses:
+      200:
+        description: Authenticated user info
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+      401:
+        description: Not authenticated
+      500:
+        description: Server error
     Return the authenticated user profile.
 
     Returns:
@@ -45,6 +85,26 @@ def me():
 @auth_bp.post("/refresh")
 def refresh():
     """
+    Refresh JWT session
+    ---
+    tags:
+      - Auth
+    summary: Refresh JWT cookie
+    description: Refresh the authentication token using the existing JWT cookie.
+    responses:
+      200:
+        description: JWT refreshed
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+      401:
+        description: Not authenticated
+      500:
+        description: Server error
     Refresh the user's JWT session cookie.
 
     Returns:
@@ -56,6 +116,26 @@ def refresh():
 @auth_bp.post("/logout")
 def logout():
     """
+    Logout user
+    ---
+    tags:
+      - Auth
+    summary: Logout user and clear authentication cookie
+    description: Clear the JWT cookie and invalidate authentication.
+    responses:
+      200:
+        description: Logged out
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+      401:
+        description: Not authenticated
+      500:
+        description: Server error
     Log the user out by clearing the JWT cookie.
 
     Returns:

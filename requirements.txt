@@ -12,3 +12,4 @@ flask-jwt-extended
 flask-cors
 Flask-Mail
 itsdangerous
+flasgger
