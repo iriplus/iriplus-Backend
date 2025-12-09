@@ -261,12 +261,12 @@ swagger_template = {
                         "format": "email",
                         "example": "john@example.com"
                     },
-                    "passwd": {
+                    "password": {
                         "type": "string",
                         "example": "P@ssw0rd123"
                     }
                 },
-                "required": ["email", "passwd"]
+                "required": ["email", "password"]
             },
             "AuthResponse": {
                 "type": "object",

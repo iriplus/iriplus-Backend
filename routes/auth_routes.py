@@ -21,7 +21,11 @@ auth_bp = Blueprint("auth", __name__)
 @auth_bp.post("/login")
 def login():
     """
-    User login
+    Handle user login requests.
+
+    Returns:
+        The result of the login_controller, which authenticates credentials
+        and sets a JWT cookie if authentication succeeds.
     ---
     tags:
       - Auth
@@ -44,11 +48,6 @@ def login():
         description: Invalid credentials
       500:
         description: Server error
-    Handle user login requests.
-
-    Returns:
-        The result of the login_controller, which authenticates credentials
-        and sets a JWT cookie if authentication succeeds.
     """
     return login_controller()
 
@@ -56,7 +55,10 @@ def login():
 @auth_bp.get("/me")
 def me():
     """
-    Get current authenticated user
+    Return the authenticated user profile.
+    Returns:
+        The JSON response produced by me_controller, including user details
+        of the authenticated session.
     ---
     tags:
       - Auth
@@ -73,11 +75,6 @@ def me():
         description: Not authenticated
       500:
         description: Server error
-    Return the authenticated user profile.
-
-    Returns:
-        The JSON response produced by me_controller, including user details
-        of the authenticated session.
     """
     return me_controller()
 
@@ -85,7 +82,9 @@ def me():
 @auth_bp.post("/refresh")
 def refresh():
     """
-    Refresh JWT session
+    Refresh the user's JWT session cookie.
+    Returns:
+        The JSON response from refresh_controller with a renewed JWT cookie.
     ---
     tags:
       - Auth
@@ -105,10 +104,6 @@ def refresh():
         description: Not authenticated
       500:
         description: Server error
-    Refresh the user's JWT session cookie.
-
-    Returns:
-        The JSON response from refresh_controller with a renewed JWT cookie.
     """
     return refresh_controller()
 
@@ -116,7 +111,9 @@ def refresh():
 @auth_bp.post("/logout")
 def logout():
     """
-    Logout user
+    Log the user out by clearing the JWT cookie.
+    Returns:
+        The JSON response from logout_controller confirming logout.
     ---
     tags:
       - Auth
@@ -136,10 +133,6 @@ def logout():
         description: Not authenticated
       500:
         description: Server error
-    Log the user out by clearing the JWT cookie.
-
-    Returns:
-        The JSON response from logout_controller confirming logout.
     """
     return logout_controller()
 
@@ -150,13 +143,27 @@ def logout():
 @auth_bp.get("/verify/<token>")
 def verify(token):
     """
-    Verify user email using a token from the verification email link.
-
-    Args:
-        token: The signed verification token included in the activation URL.
-
+    Verifies the user's email
     Returns:
-        The JSON response from verify_email_controller indicating whether the
-        verification was successful, invalid, or expired.
+        The JSON response from verify_email_controller confirming the verification
+    ---
+    tags:
+      - Auth
+    summary: Verifies the user's email
+    description: Documentar bien
+    responses:
+      200:
+        description: Logged out
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+      401:
+        description: Not authenticated
+      500:
+        description: Server error
     """
     return verify_email_controller(token)
