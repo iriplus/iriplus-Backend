@@ -5,6 +5,7 @@ It delegates the actual business logic to the level_controller.
 """
 
 from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required
 from orm_models import db
 from controllers.level_controller import create_level as controller_create_level
 from controllers.level_controller import get_all_levels as get_all_levels_controller
@@ -16,6 +17,7 @@ from controllers.level_controller import soft_delete_level as delete_level_contr
 level_bp = Blueprint("level_bp", __name__)
 
 @level_bp.route("/api/level", methods=["POST"])
+@jwt_required()
 def create_level():
     """HTTP POST endpoint to create a new Level.
 
@@ -25,6 +27,7 @@ def create_level():
     return controller_create_level()
 
 @level_bp.route("/api/level", methods=["GET"])
+@jwt_required()
 def get_all_levels():
     """HTTP GET endpoint to retrieve all non-deleted levels.
 

@@ -222,6 +222,7 @@ class User(BaseModel):
     name = db.Column(db.String(255), nullable=False)
     surname = db.Column(db.String(255), nullable=False)
     email = db.Column(db.String(255), nullable=False, unique=True)
+    is_verified = db.Column(db.Boolean,nullable=False,default=False)
     passwd = db.Column(db.String(255), nullable=False)
     profile_picture = db.Column(db.Text(1024), nullable=True)
 

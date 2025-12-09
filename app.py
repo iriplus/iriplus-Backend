@@ -19,6 +19,7 @@ from routes.user_routes import user_bp
 from routes.auth_routes import auth_bp
 from routes.exam_routes import exam_bp
 from routes.exercise_routes import exercise_bp
+from extensions.mail_extension import mail
 
 
 # ----------------------------------------------------------------------------
@@ -38,8 +39,19 @@ DB_HOST = os.getenv("DB_HOST")
 DB_NAME = os.getenv("DB_NAME")
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:4200")   # para CORS
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")           # obligatorio
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:4200")
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+
+# mail credenciales desde .env
+SECRET_KEY = os.getenv("SECRET_KEY")
+MAIL_SERVER = os.getenv("MAIL_SERVER", "smtp.gmail.com")
+MAIL_PORT = int(os.getenv("MAIL_PORT", "587"))
+MAIL_USERNAME = os.getenv("MAIL_USERNAME")
+MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
+MAIL_USE_TLS = os.getenv("MAIL_USE_TLS", "true").lower() == "true"
+MAIL_USE_SSL = os.getenv("MAIL_USE_SSL", "false").lower() == "true"
+MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER", MAIL_USERNAME)
+
 
 
 # ----------------------------------------------------------------------------
@@ -53,22 +65,31 @@ app.config["SQLALCHEMY_DATABASE_URI"] = (
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# JWT CONFIG - usando cookies HttpOnly
+# JWT CONFIG
+app.config["SECRET_KEY"] = SECRET_KEY
 app.config["JWT_SECRET_KEY"] = JWT_SECRET_KEY
 app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
 app.config["JWT_COOKIE_HTTPONLY"] = True
 app.config["JWT_COOKIE_SECURE"] = False if env_name == "dev" else True
 app.config["JWT_COOKIE_SAMESITE"] = "None" if env_name == "production" else "Lax"
 app.config["JWT_COOKIE_CSRF_PROTECT"] = False
-# si querés protección CSRF está integrada, luego se habilita en el controller si se desea
-# app.config["JWT_COOKIE_CSRF_PROTECT"] = True
 
-# permitir peticiones del frontend con cookies
+# MAIL CONFIG
+app.config["MAIL_SERVER"] = MAIL_SERVER
+app.config["MAIL_PORT"] = MAIL_PORT
+app.config["MAIL_USERNAME"] = MAIL_USERNAME
+app.config["MAIL_PASSWORD"] = MAIL_PASSWORD
+app.config["MAIL_USE_TLS"] = MAIL_USE_TLS
+app.config["MAIL_USE_SSL"] = MAIL_USE_SSL
+app.config["MAIL_DEFAULT_SENDER"] = MAIL_DEFAULT_SENDER
+
+# allow frontend cookies
 CORS(app, supports_credentials=True, resources={r"/*": {"origins": "*"}})
 
-# inicializar SQLAlchemy y JWT
+# initialize libs
 db.init_app(app)
 jwt = JWTManager(app)
+mail.init_app(app)
 
 
 # ----------------------------------------------------------------------------

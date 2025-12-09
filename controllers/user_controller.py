@@ -10,6 +10,8 @@ from flask import request, jsonify
 from sqlalchemy.exc import SQLAlchemyError
 from orm_models import db, User
 from utils.types_enum import UserType
+from utils.email_utils import send_welcome_email
+from utils.token_utils import generate_verification_token
 
 
 # ---------------------------------------------------------------------------
@@ -87,9 +89,11 @@ def create_user(user_type: UserType):
         # Commit transaction.
         db.session.add(new_user)
         db.session.commit()
+        token = generate_verification_token(new_user.email)
+        send_welcome_email(new_user.email, new_user.name, token)
 
         return jsonify({
-            "message": "User created successfully.",
+            "message": "User created successfully. Verification email sent.",
             "user": serialize_user(new_user)
         }), 201
 
