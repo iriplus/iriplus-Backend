@@ -38,6 +38,7 @@ def serialize_user(user: User) -> dict:
         "accumulated_xp": user.accumulated_xp,
         "student_level_id": user.student_level_id,
         "student_class_id": user.student_class_id,
+        "is_verified": user.is_verified
     }
 
 

@@ -18,7 +18,7 @@ from controllers.auth_controller import (
 auth_bp = Blueprint("auth", __name__)
 
 
-@auth_bp.post("/login")
+@auth_bp.post("/api/login")
 def login():
     """
     Handle user login requests.
@@ -52,7 +52,7 @@ def login():
     return login_controller()
 
 
-@auth_bp.get("/me")
+@auth_bp.get("/api/me")
 def me():
     """
     Return the authenticated user profile.
@@ -79,7 +79,7 @@ def me():
     return me_controller()
 
 
-@auth_bp.post("/refresh")
+@auth_bp.post("/api/refresh")
 def refresh():
     """
     Refresh the user's JWT session cookie.
@@ -108,7 +108,7 @@ def refresh():
     return refresh_controller()
 
 
-@auth_bp.post("/logout")
+@auth_bp.post("/api/logout")
 def logout():
     """
     Log the user out by clearing the JWT cookie.
@@ -140,7 +140,7 @@ def logout():
 # ----------------------------
 # RUTA DE VERIFICACIÓN NUEVA
 # ----------------------------
-@auth_bp.get("/verify/<token>")
+@auth_bp.get("/api/verify/<token>")
 def verify(token):
     """
     Verifies the user's email
