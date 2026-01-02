@@ -76,8 +76,8 @@ app.config["SECRET_KEY"] = SECRET_KEY
 app.config["JWT_SECRET_KEY"] = JWT_SECRET_KEY
 app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
 app.config["JWT_COOKIE_HTTPONLY"] = True
-app.config["JWT_COOKIE_SECURE"] = False if env_name == "dev" else True
-app.config["JWT_COOKIE_SAMESITE"] = "None" if env_name == "production" else "Lax"
+app.config["JWT_COOKIE_SECURE"] = False
+app.config["JWT_COOKIE_SAMESITE"] = "None"
 app.config["JWT_COOKIE_CSRF_PROTECT"] = False
 # if CSRF protection is wanted it is integrated, you have to activate it on the controller if you wish to
 # app.config["JWT_COOKIE_CSRF_PROTECT"] = True
