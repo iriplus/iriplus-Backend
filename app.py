@@ -44,8 +44,6 @@ DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:4200")   # for CORS
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")           # mandatory
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:4200")
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 
 # mail credenciales desde .env
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -76,7 +74,7 @@ app.config["SECRET_KEY"] = SECRET_KEY
 app.config["JWT_SECRET_KEY"] = JWT_SECRET_KEY
 app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
 app.config["JWT_COOKIE_HTTPONLY"] = True
-app.config["JWT_COOKIE_SECURE"] = False
+app.config["JWT_COOKIE_SECURE"] = True
 app.config["JWT_COOKIE_SAMESITE"] = "None"
 app.config["JWT_COOKIE_CSRF_PROTECT"] = False
 # if CSRF protection is wanted it is integrated, you have to activate it on the controller if you wish to
@@ -94,7 +92,13 @@ app.config["MAIL_USE_SSL"] = MAIL_USE_SSL
 app.config["MAIL_DEFAULT_SENDER"] = MAIL_DEFAULT_SENDER
 
 # allow frontend cookies
-CORS(app, supports_credentials=True, resources={r"/*": {"origins": "*"}})
+CORS(
+    app,
+    supports_credentials=True, 
+    origins=[
+        FRONTEND_URL
+    ],
+)
 
 # initialize SQLAlchemy and JWT
 # initialize libs
