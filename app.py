@@ -76,6 +76,10 @@ app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
 app.config["JWT_COOKIE_HTTPONLY"] = True
 app.config["JWT_COOKIE_SECURE"] = True
 app.config["JWT_COOKIE_SAMESITE"] = "None"
+app.config["JWT_ACCESS_COOKIE_PATH"] = "/"
+app.config["JWT_COOKIE_DOMAIN"] = None
+app.config["JWT_SESSION_COOKIE"] = False
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = 3600  # 1 hour
 app.config["JWT_COOKIE_CSRF_PROTECT"] = False
 # if CSRF protection is wanted it is integrated, you have to activate it on the controller if you wish to
 # app.config["JWT_COOKIE_CSRF_PROTECT"] = True
@@ -94,7 +98,7 @@ app.config["MAIL_DEFAULT_SENDER"] = MAIL_DEFAULT_SENDER
 # allow frontend cookies
 CORS(
     app,
-    supports_credentials=True, 
+    supports_credentials=True,
     origins=[
         FRONTEND_URL
     ],
