@@ -13,5 +13,5 @@ def get_redis_client() -> Redis:
     Returns:
         Redis client connected to the specified REDIS_URL.
     """
-    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:1234/0")
     return Redis.from_url(redis_url, decode_responses=True)
