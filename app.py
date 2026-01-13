@@ -23,6 +23,7 @@ from routes.exercise_routes import exercise_bp
 from swagger.config import swagger_config
 from swagger.template import swagger_template
 from extensions.mail_extension import mail
+from extensions.redis_extension import get_redis_client
 
 
 # ----------------------------------------------------------------------------
@@ -54,8 +55,6 @@ MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
 MAIL_USE_TLS = os.getenv("MAIL_USE_TLS", "true").lower() == "true"
 MAIL_USE_SSL = os.getenv("MAIL_USE_SSL", "false").lower() == "true"
 MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER", MAIL_USERNAME)
-
-
 
 # ----------------------------------------------------------------------------
 # Flask app setup
@@ -94,6 +93,9 @@ app.config["MAIL_PASSWORD"] = MAIL_PASSWORD
 app.config["MAIL_USE_TLS"] = MAIL_USE_TLS
 app.config["MAIL_USE_SSL"] = MAIL_USE_SSL
 app.config["MAIL_DEFAULT_SENDER"] = MAIL_DEFAULT_SENDER
+
+# REDIS CONFIG
+app.extensions["redis_client"] = get_redis_client()
 
 # allow frontend cookies
 CORS(

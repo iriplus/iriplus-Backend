@@ -13,6 +13,8 @@ from controllers.auth_controller import (
     refresh_controller,
     logout_controller,
     verify_email_controller,
+    send_reset_code_controller,
+    verify_reset_code_controller
 )
 
 auth_bp = Blueprint("auth", __name__)
@@ -167,3 +169,66 @@ def verify(token):
         description: Server error
     """
     return verify_email_controller(token)
+
+# ----------------------------
+# RESET PASSWORD CODES
+# ----------------------------
+
+@auth_bp.post("/api/forgot-password/send")
+def forgot_password_send():
+    """
+    Send a password reset code to the user's email.
+    Returns:
+        The JSON response from send_reset_code_controller confirming the code was sent.
+    ---
+    tags:
+      - Auth
+    summary: Send password reset code
+    description: Send a password reset code to the user's email.
+    responses:
+      200:
+        description: Code sent
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+      400:
+        description: Invalid email or request
+      404:
+        description: User not found
+      500:
+        description: Server error
+    """
+    return send_reset_code_controller()
+
+
+@auth_bp.post("/api/forgot-password/verify")
+def forgot_password_verify():
+    """
+    Verify the password reset code provided by the user.
+    Returns:
+        The JSON response from verify_reset_code_controller confirming the code verification.
+    ---
+    tags:
+      - Auth
+    summary: Verify password reset code
+    description: Verify the password reset code provided by the user.
+    responses:
+      200:
+        description: Code verified
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+      400:
+        description: Invalid email or code or expired code or invalid request
+      500:
+        description: Server error
+    """
+    return verify_reset_code_controller()

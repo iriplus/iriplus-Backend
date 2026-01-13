@@ -13,3 +13,4 @@ flask-cors
 Flask-Mail
 itsdangerous
 flasgger
+redis

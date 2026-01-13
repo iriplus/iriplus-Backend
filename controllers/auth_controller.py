@@ -11,6 +11,8 @@ Provides authentication features using JWT stored in HttpOnly cookies:
 Email verification tokens are generated and validated via itsdangerous.
 """
 
+import os
+import random
 from flask import jsonify, request, current_app
 from flask_jwt_extended import (
     create_access_token,
@@ -19,14 +21,55 @@ from flask_jwt_extended import (
     set_access_cookies,
     unset_jwt_cookies,
 )
+from flask_mail import Message
 import bcrypt
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from orm_models import User, db
+from extensions.mail_extension import mail
 
 
 # ----------------------------------------------------------
-# Helper: confirmar token
+# HELPERS
 # ----------------------------------------------------------
+def normalize_email(email: str) -> str:
+    """
+    Normalize an email address by stripping whitespace and converting to lowercase.
+    Args:
+        email: The email address to normalize.
+    Returns:
+        The normalized email address.
+    """
+    return email.strip().lower()
+
+def generate_code() -> str:
+    """
+    Generate a random 6-digit code.
+    Returns:
+        A string representing a zero-padded 6-digit code.
+    """
+    return f"{random.randint(0, 999999):06d}"
+
+def get_reset_ttl_seconds() -> int:
+    """
+    Get the password reset TTL in seconds from the environment variable.
+    Returns:
+        The TTL in seconds, defaulting to 900 (15 minutes).
+    """
+    raw = os.getenv("PASSWORD_RESET_TTL_SECONDS", "900")
+    try:
+        return int(raw)
+    except ValueError:
+        return 900
+
+def reset_code_key(email: str) -> str:
+    """
+    Generate the Redis key for storing a password reset code.
+    Args:
+        email: The user's email address.
+    Returns:
+        A string representing the Redis key for the reset code.
+    """
+    return f"pwdreset:code:{normalize_email(email)}"
 
 def confirm_verification_token(token: str, expiration=3600):
     """
@@ -171,7 +214,7 @@ def logout_controller():
 
 
 # ----------------------------------------------------------
-# VERIFICAR EMAIL — NUEVO
+# VERIFICAR EMAIL
 # ----------------------------------------------------------
 
 def verify_email_controller(token: str):
@@ -203,3 +246,93 @@ def verify_email_controller(token: str):
     db.session.commit()
 
     return jsonify({"msg": "Email verified successfully"}), 200
+
+# ----------------------------------------------------------
+# SEND CODE FOR PASSWORD RESET
+# ----------------------------------------------------------
+
+def send_reset_code_controller():
+    """
+    Send a password reset code to the user's email.
+    Expected JSON body:
+        {
+            "email": "<string>"
+        }
+    Returns:
+        200 OK if the code was sent.
+        400 if the email field is missing.
+        404 if no user matches the provided email address.
+    """
+    data = request.get_json(silent=True) or {}
+    email = data.get("email")
+
+    if not isinstance(email, str) or not email.strip():
+        return jsonify({"msg": "email required"}), 400
+
+    normalized = normalize_email(email)
+
+    user = User.query.filter_by(email=normalized).first()
+    if not user:
+        return jsonify({"msg": "User not found"}), 404
+
+    code = generate_code()
+    ttl_seconds = get_reset_ttl_seconds()
+
+    redis_client = current_app.extensions["redis_client"]
+    key = reset_code_key(normalized)
+
+    # Set code with TTL (overwrites previous code)
+    redis_client.setex(key, ttl_seconds, code)
+
+    msg = Message(
+        subject="Your password recovery code",
+        recipients=[normalized],
+        body=(
+            f"Your password recovery code is: {code}\n"
+            f"It expires in {ttl_seconds // 60} minutes."
+        ),
+    )
+    mail.send(msg)
+
+    return jsonify({"msg": "code sent"}), 200
+
+def verify_reset_code_controller():
+    """
+    Verify a password reset code sent to the user's email.
+    Expected JSON body:
+        {
+            "email": "<string>",
+            "code": "<string>"
+        }
+    Returns:
+        200 OK if the code is valid.
+        400 if required fields are missing or the code is invalid/expired.
+        404 if no user matches the provided email address.
+    """
+    data = request.get_json(silent=True) or {}
+    email = data.get("email")
+    code = data.get("code")
+
+    if not isinstance(email, str) or not isinstance(code, str):
+        return jsonify({"msg": "email and code required"}), 400
+
+    normalized = normalize_email(email)
+    code = code.strip()
+
+    if len(code) != 6 or not code.isdigit():
+        return jsonify({"msg": "Invalid or expired code"}), 400
+
+    redis_client = current_app.extensions["redis_client"]
+    key = reset_code_key(normalized)
+
+    stored_code = redis_client.get(key)
+    if not stored_code:
+        return jsonify({"msg": "Invalid or expired code"}), 400
+
+    if stored_code != code:
+        return jsonify({"msg": "Invalid or expired code"}), 400
+
+    # One-time use: delete on success
+    redis_client.delete(key)
+
+    return jsonify({"msg": "code valid"}), 200
