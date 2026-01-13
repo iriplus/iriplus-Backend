@@ -12,6 +12,7 @@ from controllers.auth_controller import (
     me_controller,
     refresh_controller,
     logout_controller,
+    reset_password_controller,
     verify_email_controller,
     send_reset_code_controller,
     verify_reset_code_controller
@@ -232,3 +233,33 @@ def forgot_password_verify():
         description: Server error
     """
     return verify_reset_code_controller()
+
+@auth_bp.post("/api/reset-password")
+def forgot_password_reset():
+    """
+    Reset the user's password to the one he submitted.
+    Returns:
+        The JSON response from reset_password_controller confirming the password reset.
+    ---
+    tags:
+      - Auth
+    summary: Reset user password
+    description: Reset the user's password to the one he submitted.
+    responses:
+      200:
+        description: Password reset successful
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+      400:
+        description: Invalid request or weak password
+      404:
+        description: User not found
+      500:
+        description: Server error
+    """
+    return reset_password_controller()

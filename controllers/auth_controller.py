@@ -336,3 +336,45 @@ def verify_reset_code_controller():
     redis_client.delete(key)
 
     return jsonify({"msg": "code valid"}), 200
+
+# ----------------------------------------------------------
+# RESET PASSWORD
+# ----------------------------------------------------------
+
+def reset_password_controller():
+    """
+    Reset the user's password after a valid reset code verification.
+    Expected JSON body:
+        {
+            "email": "<string>",
+            "newPassword": "<string>"
+        }
+    Returns:
+        200 OK if password was updated.
+        400 if fields are missing or invalid.
+        404 if user not found.
+    """
+    data = request.get_json(silent=True) or {}
+    email = data.get("email")
+    new_password = data.get("newPassword")
+
+    print(email)
+    print(new_password)
+
+    if not isinstance(email, str) or not isinstance(new_password, str):
+        return jsonify({"msg": "email and new_password required"}), 400
+
+    if len(new_password) < 8:
+        return jsonify({"msg": "password too short"}), 400
+
+    normalized = normalize_email(email)
+    user = User.query.filter_by(email=normalized).first()
+
+    if not user:
+        return jsonify({"msg": "User not found"}), 404
+
+    hashed = bcrypt.hashpw(new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    user.passwd = hashed
+    db.session.commit()
+
+    return jsonify({"msg": "password updated"}), 200
