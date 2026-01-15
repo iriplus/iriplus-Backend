@@ -39,7 +39,7 @@ class BaseModel(db.Model):
     date_created = db.Column(db.DateTime, default=datetime.datetime.now)
 
     # Null when active; set to a timestamp to "soft delete" records.
-    date_deleted = db.Column(db.DateTime, nullable=True)
+    date_deleted = db.Column(db.DateTime, nullable=True, default=None)
 
 
 # Association table for the many-to-many relation between teachers and classes.

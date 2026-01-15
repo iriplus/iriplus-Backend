@@ -11,6 +11,7 @@ from controllers.class_controller import (
     get_class_by_id as controller_get_class_by_id,
     update_class as controller_update_class,
     delete_class as controller_delete_class,
+    get_class_by_class_code as controller_get_class_by_class_code,
 )
 
 # Create a Blueprint for Class-related routes.
@@ -67,7 +68,7 @@ def get_all_classes():
     return controller_get_all_classes()
 
 
-@class_bp.route("/api/class/<int:class_id>", methods=["GET"])
+@class_bp.route("/api/class/id/<int:class_id>", methods=["GET"])
 def get_class_by_id(class_id: int):
     """
     Get a Class by ID
@@ -96,6 +97,36 @@ def get_class_by_id(class_id: int):
         description: Server error
     """
     return controller_get_class_by_id(class_id)
+
+@class_bp.route("/api/class/code/<string:class_code>", methods=["GET"])
+def get_class_by_class_code(class_code: str):
+    """
+    Get a Class by class_code
+    ---
+    tags:
+      - Class
+    summary: Retrieve a Class
+    description: Return a Class by its Code.
+    parameters:
+      - in: path
+        name: class_code
+        schema:
+          type: string
+        required: true
+        description: Unique code of the Class
+    responses:
+      200:
+        description: Class found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Class'
+      404:
+        description: Class not found
+      500:
+        description: Server error
+    """
+    return controller_get_class_by_class_code(class_code)
 
 
 @class_bp.route("/api/class/<int:class_id>", methods=["PUT"])

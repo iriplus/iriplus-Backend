@@ -5,11 +5,19 @@ Each function reads request data, interacts with the ORM, and returns a JSON
 response with an appropriate HTTP status code.
 """
 
+import uuid
 import datetime
 from flask import request, jsonify
+from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from orm_models import db, Class
 
+# ----------------------------------------------------------
+# HELPERS
+# ----------------------------------------------------------
+def generate_class_code() -> str:
+    """Generate an 8-char uppercase unique code derived from UUID4."""
+    return uuid.uuid4().hex[:8].upper()
 
 def _serialize_class(clazz: Class) -> dict:
     """Serialize a Class ORM object to a JSON-safe dict.
@@ -34,7 +42,6 @@ def create_class():
     """Create a Class record from the JSON request body.
 
     Expected JSON fields:
-        - class_code (str)
         - description (str)
         - suggested_level (str)
         - max_capacity (int)
@@ -47,18 +54,15 @@ def create_class():
         return jsonify({"message": "Invalid JSON body"}), 400
 
     try:
-        class_code = data["class_code"]
         description = data["description"]
         suggested_level = data["suggested_level"]
-        # Coerce to int defensively in case it arrives as a string.
         max_capacity = int(data["max_capacity"])
 
         new_class = Class(
-            class_code=class_code,
             description=description,
             suggested_level=suggested_level,
             max_capacity=max_capacity,
-            # Consider datetime.datetime.utcnow() if you need timezone-agnostic times.
+            class_code=generate_class_code(),
             date_created=datetime.datetime.now(),
         )
 
@@ -66,7 +70,7 @@ def create_class():
         db.session.commit()
 
         return jsonify(
-            {"message": "Class created successfully", "id": new_class.id}
+            {"message": "Class created successfully", "class_code": new_class.class_code, "id": new_class.id}
         ), 201
 
     except KeyError as e:
@@ -117,6 +121,27 @@ def get_class_by_id(class_id: int):
     except Exception as err:  # pylint: disable=broad-except
         return jsonify({"message": f"Something went wrong: {err}"}), 500
 
+def get_class_by_class_code(class_code: str):
+    """Return a single Class by class_code if it exists and is not soft-deleted.
+
+    Args:
+        class_code: Unique code of the Class.
+
+    Returns:
+        JSON object with the class data or a 404 error if not found.
+    """
+    try:
+        normalized = class_code.strip().upper()
+
+        clazz = Class.query.filter(func.trim(Class.class_code) == normalized).first()
+        if not clazz or clazz.date_deleted:
+            return jsonify({"message": "Class not found"}), 404
+
+        return jsonify(_serialize_class(clazz)), 200
+    except SQLAlchemyError as err:
+        return jsonify({"message": f"Database error: {err}"}), 500
+    except Exception as err:  # pylint: disable=broad-except
+        return jsonify({"message": f"Something went wrong: {err}"}), 500
 
 def update_class(class_id: int):
     """Update mutable fields of an existing Class.
@@ -136,8 +161,6 @@ def update_class(class_id: int):
         return jsonify({"message": "Invalid JSON body"}), 400
 
     try:
-        # Only overwrite fields present in the payload; keep current values otherwise.
-        clazz.class_code = data.get("class_code", clazz.class_code)
         clazz.description = data.get("description", clazz.description)
         clazz.suggested_level = data.get("suggested_level", clazz.suggested_level)
 
