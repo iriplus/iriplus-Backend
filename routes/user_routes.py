@@ -11,6 +11,8 @@ from controllers.user_controller import (
     update_user as controller_update_user,
     delete_user as controller_delete_user,
     get_all_users as controller_get_all_users,
+    get_user_by_email as controller_get_user_by_email,
+    get_user_by_dni as controller_get_user_by_dni,
 )
 from utils.types_enum import UserType
 
@@ -125,6 +127,65 @@ def get_user_route(user_id: int):
     """
     return controller_get_user(user_id)
 
+@user_bp.route("/api/user/email/<string:email>", methods=["GET"])
+def get_user_by_email(email: str):
+    """
+    Get a User by email
+    ---
+    tags:
+      - User
+    summary: Retrieve a User by email
+    description: Get a User by its email address.
+    parameters:
+      - in: path
+        name: email
+        schema:
+          type: string
+        required: true
+        description: Email address of the User
+    responses:
+      200:
+        description: User found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+      404:
+        description: User not found
+      500:
+        description: Server error
+    """
+    return controller_get_user_by_email(email)
+
+@user_bp.route("/api/user/dni/<string:dni>", methods=["GET"])
+def get_user_by_dni(dni: str):
+    """
+    Get a User by DNI
+    ---
+    tags:
+      - User
+    summary: Retrieve a User by DNI
+    description: Get a User by its DNI.
+    parameters:
+      - in: path
+        name: dni
+        schema:
+          type: string
+        required: true
+        description: DNI of the User
+    responses:
+      200:
+        description: User found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+      404:
+        description: User not found
+      500:
+        description: Server error
+    """
+    return controller_get_user_by_dni(dni)
 
 @user_bp.route("/api/user/student", methods=["GET"])
 def get_all_students():
