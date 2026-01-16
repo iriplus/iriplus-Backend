@@ -65,10 +65,7 @@ def create_user(user_type: UserType):
     if user_type == UserType.STUDENT:
         required_fields.append("student_class_id")
     
-    print(required_fields)
     missing_fields = [field for field in required_fields if field not in data]
-    print(missing_fields)
-    print(data)
     if missing_fields:
         return jsonify({
             "message": f"Missing required fields: {', '.join(missing_fields)}"
@@ -94,7 +91,6 @@ def create_user(user_type: UserType):
             student_class_id=data.get("student_class_id"),
         )
 
-        print(new_user)
         # Commit transaction.
         db.session.add(new_user)
         db.session.commit()
