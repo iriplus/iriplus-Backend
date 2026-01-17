@@ -360,9 +360,6 @@ def reset_password_controller():
     email = data.get("email")
     new_password = data.get("newPassword")
 
-    print(email)
-    print(new_password)
-
     if not isinstance(email, str) or not isinstance(new_password, str):
         return jsonify({"msg": "email and new_password required"}), 400
 

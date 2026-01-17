@@ -5,8 +5,10 @@ It provides endpoints for creating, retrieving, updating, and deleting users,
 including type-specific filtering for Students, Teachers, and Coordinators.
 """
 
+import email
 import bcrypt
 from flask import request, jsonify
+from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from orm_models import db, User
 from utils.types_enum import UserType
@@ -58,17 +60,16 @@ def create_user(user_type: UserType):
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"message": "Invalid JSON body."}), 400
-
     # Validate required fields.
     required_fields = ["name", "surname", "email", "passwd", "dni"]
     if user_type == UserType.STUDENT:
         required_fields.append("student_class_id")
+    
     missing_fields = [field for field in required_fields if field not in data]
     if missing_fields:
         return jsonify({
             "message": f"Missing required fields: {', '.join(missing_fields)}"
         }), 400
-
     try:
 
         # Hash the provided password using bcrypt with salt.
@@ -80,7 +81,7 @@ def create_user(user_type: UserType):
         new_user = User(
             name=data["name"],
             surname=data["surname"],
-            email=data["email"],
+            email=data["email"].lower(),
             passwd=hashed_password,
             dni=data["dni"],
             type=user_type,
@@ -89,6 +90,7 @@ def create_user(user_type: UserType):
             student_level_id=data.get("student_level_id"),
             student_class_id=data.get("student_class_id"),
         )
+
         # Commit transaction.
         db.session.add(new_user)
         db.session.commit()
@@ -121,7 +123,40 @@ def get_user(user_id: int):
         JSON response containing user data or a 404 message.
     """
     user = User.query.get(user_id)
-    if not user:
+    if not user or user.date_deleted:
+        return jsonify({"message": "User not found."}), 404
+
+    return jsonify(serialize_user(user)), 200
+
+def get_user_by_email(user_email: str):
+    """Retrieve a single user by email.
+
+    Args:
+        email: Email address of the user to fetch.
+    Returns:
+        JSON response containing user data or a 404 message.
+    """
+
+    normalized_email = user_email.strip().lower()
+
+    user = User.query.filter(User.email == normalized_email).first()
+    if not user or user.date_deleted:
+        return jsonify({"message": "User not found."}), 404
+
+    return jsonify(serialize_user(user)), 200
+
+def get_user_by_dni(dni: str):
+    """Retrieve a single user by DNI.
+
+    Args:
+        dni: DNI of the user to fetch.
+    Returns:
+        JSON response containing user data or a 404 message.
+    """
+    normalized_dni = dni.strip()
+
+    user = User.query.filter(func.trim(User.dni) == normalized_dni).first()
+    if not user or user.date_deleted:
         return jsonify({"message": "User not found."}), 404
 
     return jsonify(serialize_user(user)), 200
