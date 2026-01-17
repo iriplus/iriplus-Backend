@@ -21,10 +21,10 @@ from flask_jwt_extended import (
     set_access_cookies,
     unset_jwt_cookies,
 )
-from flask_mail import Message
 import bcrypt
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from orm_models import User, db
+from utils.brevo_mail import send_brevo_email
 from extensions.mail_extension import mail
 
 
@@ -284,15 +284,17 @@ def send_reset_code_controller():
     # Set code with TTL (overwrites previous code)
     redis_client.setex(key, ttl_seconds, code)
 
-    msg = Message(
+    html = f"""
+    <p>Your password recovery code is:</p>
+    <h2>{code}</h2>
+    <p>It expires in {ttl_seconds // 60} minutes.</p>
+    """
+
+    send_brevo_email(
+        to_email=normalized,
         subject="Your password recovery code",
-        recipients=[normalized],
-        body=(
-            f"Your password recovery code is: {code}\n"
-            f"It expires in {ttl_seconds // 60} minutes."
-        ),
+        html_content=html,
     )
-    mail.send(msg)
 
     return jsonify({"msg": "code sent"}), 200
 

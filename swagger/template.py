@@ -35,6 +35,10 @@ swagger_template = {
         {
             "name": "Exercise",
             "description": "Create and manage exercises"
+        },
+        {
+            "name": "Utils",
+            "description": "Testing purpose utilities"
         }
     ],
     "paths": {},

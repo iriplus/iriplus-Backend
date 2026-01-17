@@ -19,6 +19,7 @@ from routes.class_routes import class_bp
 from routes.user_routes import user_bp
 from routes.auth_routes import auth_bp
 from routes.exam_routes import exam_bp
+from routes.test_mail import test_mail_bp
 from routes.exercise_routes import exercise_bp
 from swagger.config import swagger_config
 from swagger.template import swagger_template
@@ -31,7 +32,6 @@ from extensions.redis_extension import get_redis_client
 # ----------------------------------------------------------------------------
 
 env_name = os.getenv("ENVIRONMENT", "dev")
-
 if env_name == "production":
     load_dotenv(".env.production")
 elif env_name == "testing":
@@ -127,6 +127,8 @@ app.register_blueprint(user_bp)
 app.register_blueprint(auth_bp)
 app.register_blueprint(exam_bp)
 app.register_blueprint(exercise_bp)
+app.register_blueprint(test_mail_bp)
+
 
 
 # ----------------------------------------------------------------------------
