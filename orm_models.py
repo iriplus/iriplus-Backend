@@ -60,6 +60,23 @@ teacher_class = db.Table(
     ),
 )
 
+# Many-to-many between Exam and Exercise (exercise = "exercise type")
+exam_exercise = db.Table(
+    "exam_exercise",
+    db.Column(
+        "exam_id",
+        db.Integer,
+        db.ForeignKey("exam.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "exercise_id",
+        db.Integer,
+        db.ForeignKey("exercise.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
 
 class Level(BaseModel):
     """Represents a progression level (tier) that a student can reach.
@@ -175,27 +192,46 @@ class Exam(BaseModel):
     )
 
 
-class Exercise(BaseModel):
-    """Represents a single task/question within an exam.
-    """
+class Exercise(db.Model):
+    """Represents a type of exercise (exercise archetype), not a concrete
+    question inside an exam.
 
+    This model acts as a catalogue of exercise types that can be reused across
+    many exams (many-to-many relationship).
+
+    Attributes:
+        id: Surrogate integer primary key.
+        date_created: Creation timestamp (server-side default).
+        date_deleted: Soft-delete timestamp (null means active).
+        name: Human-readable unique name of the exercise type
+              (e.g., "Cloze test with options").
+        content_description: Long textual description explaining what this
+              exercise type implies pedagogically and procedurally.
+        exams: Many-to-many relationship with Exam via the exam_exercise table.
+    """
     __tablename__ = "exercise"
 
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
 
-    # Attribute names shadowing built-ins are acceptable as model attributes.
-    archetype = db.Column(db.String(255), nullable=False)
-
-    content = db.Column(db.Text(1024), nullable=False)
-    rubric = db.Column(db.String(255), nullable=False)
-    key = db.Column(db.String(255), nullable=False)
-
-    exam_id = db.Column(
-        db.Integer,
-        db.ForeignKey("exam.id", ondelete="CASCADE"),
+    # Fecha de alta
+    date_created = db.Column(
+        db.DateTime,
         nullable=False,
+        server_default=db.func.current_timestamp(),
     )
-    # Back-populates Exam.exercises
-    exam = db.relationship("Exam", back_populates="exercises")
+
+    # Fecha de baja lógica (soft delete)
+    date_deleted = db.Column(db.DateTime, nullable=True)
+
+    name = db.Column(db.String(255), nullable=False, unique=True)
+    content_description = db.Column(db.Text, nullable=False)
+
+    # Relación N:N con Exam
+    exams = db.relationship(
+        "Exam",
+        secondary=exam_exercise,
+        back_populates="exercise_types",
+    )
 
 
 class User(BaseModel):
