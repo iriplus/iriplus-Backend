@@ -64,7 +64,6 @@ def create_user(user_type: UserType):
     required_fields = ["name", "surname", "email", "passwd", "dni"]
     if user_type == UserType.STUDENT:
         required_fields.append("student_class_id")
-    
     missing_fields = [field for field in required_fields if field not in data]
     if missing_fields:
         return jsonify({
