@@ -120,14 +120,22 @@ def login_controller():
     password = data.get("password")
 
     if not isinstance(email, str) or not isinstance(password, str):
-        return jsonify({"msg": "email and password required"}), 400
+        return jsonify({"msg": "Invalid credentials"}), 401
+    normalized = normalize_email(email)
 
-    user = User.query.filter_by(email=email).first()
+    user = User.query.filter_by(email=normalized).first()
+
+    # Dummy hash to mitigate timing attacks
+    dummy_hash = bcrypt.hashpw(b"dummy_password", bcrypt.gensalt())
 
     if not user or not isinstance(user.passwd, str):
+        bcrypt.checkpw(password.encode("utf-8"), dummy_hash)
         return jsonify({"msg": "Invalid credentials"}), 401
 
-    # ----------- NEW: bloquear si no verificó email ----------
+    # Soft delete validation
+    if user.date_deleted is not None:
+        return jsonify({"msg": "Invalid credentials"}), 401
+    # Email verification validation
     if not user.is_verified:
         return jsonify({"msg": "Email not verified"}), 403
 
