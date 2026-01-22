@@ -146,7 +146,7 @@ class Exam(BaseModel):
         notes: Optional free-form notes for the exam.
         coordinator_id: FK to the coordinating user.
         coordinator: Many-to-one: coordinating user (explicit FK to disambiguate).
-        exercises: One-to-many: tasks/questions in this exam.
+        exercises: many-to-many: tasks/questions in this exam.
         class_id: FK to the class this exam belongs to.
         class_exam: Many-to-one: the owning Class.
         student_id: FK to the student taking this exam (if per-student).
@@ -171,7 +171,11 @@ class Exam(BaseModel):
     )
 
     # Back-populates Exercise.exam
-    exercises = db.relationship("Exercise", back_populates="exam")
+    exercise_types = db.relationship(
+        "Exercise",
+        secondary=exam_exercise,
+        back_populates="exams",
+    )
 
     class_id = db.Column(
         db.Integer,
