@@ -5,12 +5,11 @@ It provides endpoints for creating, retrieving, updating, and deleting users,
 including type-specific filtering for Students, Teachers, and Coordinators.
 """
 
-import email
 import bcrypt
 from flask import request, jsonify
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
-from orm_models import db, User
+from orm_models import db, User, Class
 from utils.types_enum import UserType
 from utils.email_utils import send_welcome_email
 from utils.token_utils import generate_verification_token
@@ -42,7 +41,6 @@ def serialize_user(user: User) -> dict:
         "student_class_id": user.student_class_id,
         "is_verified": user.is_verified
     }
-
 
 # ---------------------------------------------------------------------------
 # Controller functions
@@ -111,6 +109,109 @@ def create_user(user_type: UserType):
         db.session.rollback()
         return jsonify({"message": f"Unexpected error: {err}"}), 500
 
+def register_student():
+    """Create a new Student user.
+
+    Validates:
+    - Required fields
+    - Email uniqueness
+    - DNI uniqueness
+    - Class existence
+    - Class capacity
+    - Soft delete constraints
+
+    Returns:
+        201 Created on success
+        400 Bad request for invalid input
+        404 Class not found
+        409 Email or DNI already exists
+        422 Class is full
+    """
+
+    data = request.get_json(silent=True) or {}
+
+    required_fields = ["name", "surname", "email", "passwd", "dni", "class_code"]
+
+    missing = [f for f in required_fields if not data.get(f)]
+    if missing:
+        return jsonify({
+            "message": f"Missing required fields: {', '.join(missing)}"}), 400
+    name = data["name"].strip()
+    surname = data["surname"].strip()
+    email = data["email"].strip().lower()
+    passwd = data["passwd"]
+    dni = data["dni"].strip()
+    class_code = data["class_code"].strip()
+
+    try:
+        # Check for existing email or DNI
+        existing_email = User.query.filter(
+            func.lower(User.email) == email
+        ).first()
+
+        if existing_email and not existing_email.date_deleted:
+            return jsonify({"message": "Email already exists."}), 409
+        existing_dni = User.query.filter(
+            func.trim(User.dni) == dni
+        ).first()
+
+        if existing_dni and not existing_dni.date_deleted:
+            return jsonify({"message": "DNI already exists."}), 409
+
+        # Verify class existence and capacity
+        clazz = Class.query.filter(
+            func.trim(Class.class_code) == class_code,
+            Class.date_deleted.is_(None),
+        ).first()
+
+        if not clazz:
+            return jsonify({"message": "Class not found."}), 404
+        current_students = (
+            db.session.query(func.count(User.id)) # pylint: disable=not-callable
+            .filter(
+                User.student_class_id == clazz.id,
+                User.date_deleted.is_(None),
+            ).scalar()
+        )
+
+        print(current_students, clazz.max_capacity)
+
+        if current_students >= clazz.max_capacity:
+            return jsonify({"message": "Class is full."}), 422
+        # Hash password
+        hashed_password = bcrypt.hashpw(
+            passwd.encode("utf-8"), bcrypt.gensalt()
+        ).decode("utf-8")
+
+        # Create new student user
+        new_user = User(
+            name=name,
+            surname=surname,
+            email=email,
+            passwd=hashed_password,
+            dni=dni,
+            type=UserType.STUDENT,
+            student_class_id=clazz.id,
+            accumulated_xp=0,
+            is_verified=False
+        )
+
+        db.session.add(new_user)
+        db.session.commit()
+
+        # Send verification email
+        token = generate_verification_token(new_user.email)
+        send_welcome_email(new_user.email, new_user.name, token)
+
+        return jsonify({
+            "message": "Student created successfully. Verification email sent."
+        }), 201
+    except SQLAlchemyError as err:
+        db.session.rollback()
+        return jsonify({"message": f"Database error: {err}"}), 500
+    except Exception as err:  # pylint: disable=broad-except
+        db.session.rollback()
+        return jsonify({"message": f"Unexpected error: {err}"}), 500
 
 def get_user(user_id: int):
     """Retrieve a single user by ID.

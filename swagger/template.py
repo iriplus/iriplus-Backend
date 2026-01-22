@@ -257,6 +257,52 @@ swagger_template = {
                     "dni"
                 ]
             },
+            "StudentInput": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                    "type": "string",
+                    "example": "John"
+                    },
+                    "surname": {
+                    "type": "string",
+                    "example": "Doe"
+                    },
+                    "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "john@example.com"
+                    },
+                    "passwd": {
+                    "type": "string",
+                    "minLength": 8,
+                    "example": "12345678",
+                    },
+                    "profile_picture": {
+                    "type": "string",
+                    "nullable": True,
+                    "example": "https://example.com/avatar.png"
+                    },
+                    "dni": {
+                    "type": "string",
+                    "example": "40102938"
+                    },
+                    "class_code": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 8,
+                    "example": "MATHC101"
+                    }
+                },
+                "required": [
+                    "name",
+                    "surname",
+                    "email",
+                    "passwd",
+                    "dni",
+                    "class_code"
+                ]
+            },
             "LoginInput": {
                 "type": "object",
                 "properties": {

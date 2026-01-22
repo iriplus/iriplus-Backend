@@ -7,6 +7,7 @@ by type (Student, Teacher, Coordinator). Delegates logic to controller functions
 from flask import Blueprint
 from controllers.user_controller import (
     create_user as controller_create_user,
+    register_student as controller_register_student,
     get_user as controller_get_user,
     update_user as controller_update_user,
     delete_user as controller_delete_user,
@@ -20,29 +21,35 @@ user_bp = Blueprint("user_bp", __name__)
 
 
 @user_bp.route("/api/user/student", methods=["POST"])
-def create_student():
+def register_student():
     """
     Create a Student user
     ---
     tags:
       - User
-    summary: Create a Student user
-    description: Create a new User entity with role Student.
+    summary: Register a new Student account
+    description: Public endpoint to create a Student account and send a verification email
     requestBody:
       required: true
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/UserInput'
+            $ref: '#/components/schemas/StudentInput'
     responses:
       201:
         description: User created successfully
       400:
-        description: Invalid JSON body
+        description: Invalid data
+      404:
+        description: Class not found
+      409:
+        description: Email or DNI already exists
+      422:
+        description: Class full
       500:
         description: Server error
     """
-    return controller_create_user(user_type=UserType.STUDENT)
+    return controller_register_student()
 
 
 @user_bp.route("/api/user/teacher", methods=["POST"])
