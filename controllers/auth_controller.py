@@ -280,30 +280,27 @@ def send_reset_code_controller():
     normalized = normalize_email(email)
 
     user = User.query.filter_by(email=normalized).first()
-    if not user:
-        return jsonify({"msg": "User not found"}), 404
+    if user:
+        code = generate_code()
+        ttl_seconds = get_reset_ttl_seconds()
 
-    code = generate_code()
-    ttl_seconds = get_reset_ttl_seconds()
+        redis_client = current_app.extensions["redis_client"]
+        key = reset_code_key(normalized)
+        redis_client.setex(key, ttl_seconds, code)
 
-    redis_client = current_app.extensions["redis_client"]
-    key = reset_code_key(normalized)
+        html = f"""
+        <p>Your password recovery code is:</p>
+        <h2>{code}</h2>
+        <p>It expires in {ttl_seconds // 60} minutes.</p>
+        """
 
-    # Set code with TTL (overwrites previous code)
-    redis_client.setex(key, ttl_seconds, code)
+        send_brevo_email(
+            to_email=normalized,
+            subject="Your password recovery code",
+            html_content=html,
+        )
 
-    html = f"""
-    <p>Your password recovery code is:</p>
-    <h2>{code}</h2>
-    <p>It expires in {ttl_seconds // 60} minutes.</p>
-    """
-
-    send_brevo_email(
-        to_email=normalized,
-        subject="Your password recovery code",
-        html_content=html,
-    )
-
+    # Always send code 200 even if the user doesn't exist avoiding user enumeration
     return jsonify({"msg": "code sent"}), 200
 
 def verify_reset_code_controller():
@@ -342,7 +339,8 @@ def verify_reset_code_controller():
     if stored_code != code:
         return jsonify({"msg": "Invalid or expired code"}), 400
 
-    # One-time use: delete on success
+    # Delete key on success and save a flag for that email with a timeout
+    redis_client.setex(f"pwdreset:verified:{normalized}", 600, "1")
     redis_client.delete(key)
 
     return jsonify({"msg": "code valid"}), 200
@@ -369,19 +367,28 @@ def reset_password_controller():
     new_password = data.get("newPassword")
 
     if not isinstance(email, str) or not isinstance(new_password, str):
-        return jsonify({"msg": "email and new_password required"}), 400
-
+        return jsonify({"msg": "invalid request"}), 400
     if len(new_password) < 8:
         return jsonify({"msg": "password too short"}), 400
 
     normalized = normalize_email(email)
+    redis_client = current_app.extensions["redis_client"]
+    verification_key = f"pwdreset:verified:{normalized}"
+    if not redis_client.get(verification_key):
+        return jsonify({"msg": "Verification required"}), 403
     user = User.query.filter_by(email=normalized).first()
+    if not user or user.date_deleted:
+        redis_client.delete(verification_key)
+        return jsonify({"msg": "Invalid request"}), 404
 
-    if not user:
-        return jsonify({"msg": "User not found"}), 404
+    hashed = bcrypt.hashpw(
+        new_password.encode("utf-8"),
+        bcrypt.gensalt()
+    ).decode("utf-8")
 
-    hashed = bcrypt.hashpw(new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     user.passwd = hashed
     db.session.commit()
+
+    redis_client.delete(verification_key)
 
     return jsonify({"msg": "password updated"}), 200
