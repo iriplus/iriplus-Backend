@@ -179,7 +179,8 @@ def me_controller():
             "email": user.email,
             "type": user.type.value,
             "profile_picture": user.profile_picture,
-            "is_verified": user.is_verified,   # opcional
+            "is_verified": user.is_verified,
+            "student_class_id": user.student_class_id,
         },
         200,
     )

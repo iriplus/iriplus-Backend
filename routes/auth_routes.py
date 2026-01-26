@@ -7,6 +7,7 @@ when registering the blueprint in the main Flask application.
 """
 
 from flask import Blueprint
+from flask_jwt_extended import jwt_required
 from controllers.auth_controller import (
     login_controller,
     me_controller,
@@ -24,8 +25,7 @@ auth_bp = Blueprint("auth", __name__)
 @auth_bp.post("/api/login")
 def login():
     """
-    Handle user login requests.
-
+    Authenticate a user and issue JWT cookies.
     Returns:
         The result of the login_controller, which authenticates credentials
         and sets a JWT cookie if authentication succeeds.
@@ -49,6 +49,8 @@ def login():
               $ref: '#/components/schemas/AuthResponse'
       400:
         description: Invalid credentials
+      401:
+        description: Invalid credentials
       500:
         description: Server error
     """
@@ -56,12 +58,10 @@ def login():
 
 
 @auth_bp.get("/api/me")
+@jwt_required()
 def me():
     """
-    Return the authenticated user profile.
-    Returns:
-        The JSON response produced by me_controller, including user details
-        of the authenticated session.
+    Return the authenticated user's profile.
     ---
     tags:
       - Auth
@@ -83,11 +83,10 @@ def me():
 
 
 @auth_bp.post("/api/refresh")
+@jwt_required()
 def refresh():
     """
-    Refresh the user's JWT session cookie.
-    Returns:
-        The JSON response from refresh_controller with a renewed JWT cookie.
+    Refresh the JWT cookie for the authenticated user.
     ---
     tags:
       - Auth
@@ -112,11 +111,10 @@ def refresh():
 
 
 @auth_bp.post("/api/logout")
+@jwt_required()
 def logout():
     """
-    Log the user out by clearing the JWT cookie.
-    Returns:
-        The JSON response from logout_controller confirming logout.
+    Clear the JWT cookie and log the user out.
     ---
     tags:
       - Auth
@@ -140,55 +138,18 @@ def logout():
     return logout_controller()
 
 
-# ----------------------------
-# RUTA DE VERIFICACIÓN NUEVA
-# ----------------------------
 @auth_bp.get("/api/verify/<token>")
 def verify(token):
     """
-    Verifies the user's email
-    Returns:
-        The JSON response from verify_email_controller confirming the verification
+    Verify a user's email using a signed token.
     ---
     tags:
       - Auth
     summary: Verifies the user's email
-    description: Documentar bien
+    description: Validate the signed verification token and activate the account.
     responses:
       200:
-        description: Logged out
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-      401:
-        description: Not authenticated
-      500:
-        description: Server error
-    """
-    return verify_email_controller(token)
-
-# ----------------------------
-# RESET PASSWORD CODES
-# ----------------------------
-
-@auth_bp.post("/api/forgot-password/send")
-def forgot_password_send():
-    """
-    Send a password reset code to the user's email.
-    Returns:
-        The JSON response from send_reset_code_controller confirming the code was sent.
-    ---
-    tags:
-      - Auth
-    summary: Send password reset code
-    description: Send a password reset code to the user's email.
-    responses:
-      200:
-        description: Code sent
+        description: Email verified
         content:
           application/json:
             schema:
@@ -197,9 +158,27 @@ def forgot_password_send():
                 message:
                   type: string
       400:
+        description: Invalid or expired token
+      500:
+        description: Server error
+    """
+    return verify_email_controller(token)
+
+
+@auth_bp.post("/api/forgot-password/send")
+def forgot_password_send():
+    """
+    Send a password reset code to a user's email.
+    ---
+    tags:
+      - Auth
+    summary: Send password reset code
+    description: Send a password reset code to the user's email.
+    responses:
+      200:
+        description: Code sent
+      400:
         description: Invalid email or request
-      404:
-        description: User not found
       500:
         description: Server error
     """
@@ -209,9 +188,7 @@ def forgot_password_send():
 @auth_bp.post("/api/forgot-password/verify")
 def forgot_password_verify():
     """
-    Verify the password reset code provided by the user.
-    Returns:
-        The JSON response from verify_reset_code_controller confirming the code verification.
+    Verify a password reset code.
     ---
     tags:
       - Auth
@@ -220,26 +197,18 @@ def forgot_password_verify():
     responses:
       200:
         description: Code verified
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
       400:
-        description: Invalid email or code or expired code or invalid request
+        description: Invalid or expired code
       500:
         description: Server error
     """
     return verify_reset_code_controller()
 
+
 @auth_bp.post("/api/reset-password")
 def forgot_password_reset():
     """
-    Reset the user's password to the one he submitted.
-    Returns:
-        The JSON response from reset_password_controller confirming the password reset.
+    Reset the user's password after verification.
     ---
     tags:
       - Auth
@@ -248,17 +217,10 @@ def forgot_password_reset():
     responses:
       200:
         description: Password reset successful
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
       400:
         description: Invalid request or weak password
-      404:
-        description: User not found
+      403:
+        description: Verification required
       500:
         description: Server error
     """

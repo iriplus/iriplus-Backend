@@ -16,6 +16,7 @@ from controllers.user_controller import (
     get_user_by_dni as controller_get_user_by_dni,
 )
 from utils.types_enum import UserType
+from utils.decorators import roles_required, self_or_coordinator
 
 user_bp = Blueprint("user_bp", __name__)
 
@@ -23,7 +24,7 @@ user_bp = Blueprint("user_bp", __name__)
 @user_bp.route("/api/user/student", methods=["POST"])
 def register_student():
     """
-    Create a Student user
+    Register a new student account.
     ---
     tags:
       - User
@@ -53,9 +54,10 @@ def register_student():
 
 
 @user_bp.route("/api/user/teacher", methods=["POST"])
+@roles_required(UserType.COORDINATOR)
 def create_teacher():
     """
-    Create a Teacher user
+    Create a new Teacher user (Coordinator only).
     ---
     tags:
       - User
@@ -72,6 +74,8 @@ def create_teacher():
         description: User created successfully
       400:
         description: Invalid JSON body
+      403:
+        description: Forbidden
       500:
         description: Server error
     """
@@ -79,9 +83,10 @@ def create_teacher():
 
 
 @user_bp.route("/api/user/coordinator", methods=["POST"])
+@roles_required(UserType.COORDINATOR)
 def create_coordinator():
     """
-    Create a Coordinator user
+    Create a new Coordinator user (Coordinator only).
     ---
     tags:
       - User
@@ -98,6 +103,8 @@ def create_coordinator():
         description: User created successfully
       400:
         description: Invalid JSON body
+      403:
+        description: Forbidden
       500:
         description: Server error
     """
@@ -105,9 +112,10 @@ def create_coordinator():
 
 
 @user_bp.route("/api/user/<int:user_id>", methods=["GET"])
+@self_or_coordinator()
 def get_user_route(user_id: int):
     """
-    Get a User by ID
+    Retrieve a user by ID (self or Coordinator).
     ---
     tags:
       - User
@@ -127,6 +135,8 @@ def get_user_route(user_id: int):
           application/json:
             schema:
               $ref: '#/components/schemas/User'
+      403:
+        description: Forbidden
       404:
         description: User not found
       500:
@@ -134,10 +144,12 @@ def get_user_route(user_id: int):
     """
     return controller_get_user(user_id)
 
+
 @user_bp.route("/api/user/email/<string:email>", methods=["GET"])
+@roles_required(UserType.COORDINATOR)
 def get_user_by_email(email: str):
     """
-    Get a User by email
+    Retrieve a user by email (Coordinator only).
     ---
     tags:
       - User
@@ -153,10 +165,8 @@ def get_user_by_email(email: str):
     responses:
       200:
         description: User found
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/User'
+      403:
+        description: Forbidden
       404:
         description: User not found
       500:
@@ -164,10 +174,12 @@ def get_user_by_email(email: str):
     """
     return controller_get_user_by_email(email)
 
+
 @user_bp.route("/api/user/dni/<string:dni>", methods=["GET"])
+@roles_required(UserType.COORDINATOR)
 def get_user_by_dni(dni: str):
     """
-    Get a User by DNI
+    Retrieve a user by DNI (Coordinator only).
     ---
     tags:
       - User
@@ -183,10 +195,8 @@ def get_user_by_dni(dni: str):
     responses:
       200:
         description: User found
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/User'
+      403:
+        description: Forbidden
       404:
         description: User not found
       500:
@@ -194,10 +204,12 @@ def get_user_by_dni(dni: str):
     """
     return controller_get_user_by_dni(dni)
 
+
 @user_bp.route("/api/user/student", methods=["GET"])
+@roles_required(UserType.COORDINATOR, UserType.TEACHER)
 def get_all_students():
     """
-    List all Student users
+    List all Student users (Coordinator or Teacher).
     ---
     tags:
       - User
@@ -206,12 +218,8 @@ def get_all_students():
     responses:
       200:
         description: OK
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/User'
+      403:
+        description: Forbidden
       500:
         description: Server error
     """
@@ -219,9 +227,10 @@ def get_all_students():
 
 
 @user_bp.route("/api/user/teacher", methods=["GET"])
+@roles_required(UserType.COORDINATOR)
 def get_all_teachers():
     """
-    List all Teacher users
+    List all Teacher users (Coordinator only).
     ---
     tags:
       - User
@@ -230,12 +239,8 @@ def get_all_teachers():
     responses:
       200:
         description: OK
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/User'
+      403:
+        description: Forbidden
       500:
         description: Server error
     """
@@ -243,9 +248,10 @@ def get_all_teachers():
 
 
 @user_bp.route("/api/user/coordinator", methods=["GET"])
+@roles_required(UserType.COORDINATOR)
 def get_all_coordinators():
     """
-    List all Coordinator users
+    List all Coordinator users (Coordinator only)
     ---
     tags:
       - User
@@ -254,12 +260,8 @@ def get_all_coordinators():
     responses:
       200:
         description: OK
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/User'
+      403:
+        description: Forbidden
       500:
         description: Server error
     """
@@ -267,9 +269,10 @@ def get_all_coordinators():
 
 
 @user_bp.route("/api/user/<int:user_id>", methods=["PUT"])
+@self_or_coordinator()
 def update_user_route(user_id: int):
     """
-    Update a User
+    Update a user (self or Coordinator).
     ---
     tags:
       - User
@@ -290,8 +293,8 @@ def update_user_route(user_id: int):
     responses:
       200:
         description: User updated
-      400:
-        description: Invalid JSON body or invalid fields
+      403:
+        description: Forbidden
       404:
         description: User not found
       500:
@@ -301,9 +304,10 @@ def update_user_route(user_id: int):
 
 
 @user_bp.route("/api/user/<int:user_id>", methods=["DELETE"])
+@roles_required(UserType.COORDINATOR)
 def delete_user_route(user_id: int):
     """
-    Soft delete a User
+    Soft delete a user (Coordinator only)
     ---
     tags:
       - User
@@ -318,6 +322,8 @@ def delete_user_route(user_id: int):
     responses:
       200:
         description: User deleted
+      403:
+        description: Forbidden
       404:
         description: User not found
       500:

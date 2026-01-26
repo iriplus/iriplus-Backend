@@ -4,49 +4,35 @@ This module defines the HTTP endpoints related to Level operations.
 It delegates the actual business logic to the level_controller.
 """
 
-from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required
-from orm_models import db
+from flask import Blueprint, jsonify
+from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
+from orm_models import db, User
 from controllers.level_controller import create_level as controller_create_level
 from controllers.level_controller import get_all_levels as get_all_levels_controller
 from controllers.level_controller import get_level_by_id as get_one_controller
 from controllers.level_controller import update_level as update_level_controller
 from controllers.level_controller import soft_delete_level as delete_level_controller
+from utils.types_enum import UserType
+from utils.decorators import roles_required
 
-# Create a Blueprint for Level-related routes.
 level_bp = Blueprint("level_bp", __name__)
 
 
 @level_bp.route("/api/level", methods=["POST"])
-@jwt_required()
+@roles_required(UserType.COORDINATOR)
 def create_level():
     """
-    Create a new Level
+    Create a new Level (Coordinator only).
     ---
     tags:
       - Level
     summary: Create a new Level
     description: Create a new Level entity with description, cosmetic and min_xp.
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/LevelInput'
     responses:
       201:
         description: Level created successfully
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                id:
-                  type: integer
-      400:
-        description: Invalid JSON body
+      403:
+        description: Forbidden
       500:
         description: Server error
     """
@@ -54,10 +40,10 @@ def create_level():
 
 
 @level_bp.route("/api/level", methods=["GET"])
-@jwt_required()
+@roles_required(UserType.COORDINATOR, UserType.TEACHER)
 def get_all_levels():
     """
-    List all Levels
+    List all Levels (Coordinator and Teacher)
     ---
     tags:
       - Level
@@ -66,12 +52,8 @@ def get_all_levels():
     responses:
       200:
         description: OK
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/Level'
+      403:
+        description: Forbidden
       500:
         description: Server error
     """
@@ -81,60 +63,58 @@ def get_all_levels():
 @level_bp.route("/api/level/<int:level_id>", methods=["GET"])
 def get_one_level(level_id: int):
     """
-    Get a Level by ID
+    Retrieve a Level by ID respecting role restrictions.
     ---
     tags:
       - Level
     summary: Retrieve a Level
     description: Return a Level by its ID if it exists and is not soft-deleted.
-    parameters:
-      - in: path
-        name: level_id
-        schema:
-          type: integer
-        required: true
-        description: Primary key of the Level
     responses:
       200:
         description: Level found
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Level'
+      403:
+        description: Forbidden
       404:
         description: Level not found
       500:
         description: Server error
     """
-    return get_one_controller(level_id)
+
+    verify_jwt_in_request()
+    current_user_id = int(get_jwt_identity())
+    user = db.session.get(User, current_user_id)
+
+    if not user or user.date_deleted:
+        return jsonify({"message": "User not found"}), 404
+
+    # Coordinator and Teacher can read any level
+    if user.type in (UserType.COORDINATOR, UserType.TEACHER):
+        return get_one_controller(level_id)
+
+    # Student can only read their own level
+    if user.type == UserType.STUDENT:
+        if user.student_level_id == level_id:
+            return get_one_controller(level_id)
+        return jsonify({"message": "Forbidden"}), 403
+
+    return jsonify({"message": "Forbidden"}), 403
 
 
 @level_bp.route("/api/level/<int:level_id>", methods=["PUT"])
+@roles_required(UserType.COORDINATOR)
 def update_level(level_id: int):
     """
-    Update a Level
+    Update a Level (Coordinator only).
     ---
     tags:
       - Level
     summary: Update an existing Level
     description: Update fields of a Level entity.
-    parameters:
-      - in: path
-        name: level_id
-        schema:
-          type: integer
-        required: true
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/LevelInput'
     responses:
       200:
         description: Level updated
-      400:
-        description: Invalid JSON body or invalid fields
+      403:
+        description: Forbidden
       404:
         description: Level not found
       500:
@@ -144,23 +124,20 @@ def update_level(level_id: int):
 
 
 @level_bp.route("/api/level/<int:level_id>", methods=["DELETE"])
+@roles_required(UserType.COORDINATOR)
 def delete_level(level_id: int):
     """
-    Soft delete a Level
+    Soft delete a Level (Coordinator only).
     ---
     tags:
       - Level
     summary: Soft delete a Level
     description: Perform a soft delete of a Level by setting date_deleted.
-    parameters:
-      - in: path
-        name: level_id
-        schema:
-          type: integer
-        required: true
     responses:
       200:
         description: Level deleted
+      403:
+        description: Forbidden
       404:
         description: Level not found
       500:
