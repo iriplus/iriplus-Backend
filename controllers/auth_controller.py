@@ -177,6 +177,7 @@ def me_controller():
             "name": user.name,
             "surname": user.surname,
             "email": user.email,
+            "dni": user.dni,
             "type": user.type.value,
             "profile_picture": user.profile_picture,
             "is_verified": user.is_verified,

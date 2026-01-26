@@ -7,10 +7,13 @@ response with an appropriate HTTP status code.
 
 import uuid
 import datetime
+from typing import cast, List
 from flask import request, jsonify
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
-from orm_models import db, Class
+from controllers.user_controller import serialize_user
+from orm_models import db, Class, User
+from utils.types_enum import UserType
 
 # ----------------------------------------------------------
 # HELPERS
@@ -28,6 +31,8 @@ def _serialize_class(clazz: Class) -> dict:
     Returns:
         A dictionary with primitive/JSON-serializable values.
     """
+    students = cast(List[User], clazz.students)
+    teachers = cast(List[User], clazz.teachers)
     return {
         "id": clazz.id,
         "class_code": clazz.class_code,
@@ -35,6 +40,17 @@ def _serialize_class(clazz: Class) -> dict:
         "suggested_level": clazz.suggested_level,
         "max_capacity": clazz.max_capacity,
         "date_created": clazz.date_created.isoformat() if clazz.date_created else None,
+        "students": [
+            serialize_user(student)
+            for student in students
+            if not student.date_deleted
+        ],
+        "teachers": [
+            serialize_user(teacher)
+            for teacher in teachers
+            if not teacher.date_deleted
+        ],
+        "teacher_ids": [t.id for t in teachers],
     }
 
 
@@ -152,20 +168,31 @@ def update_class(class_id: int):
     Returns:
         JSON with a success message or an error status/message.
     """
-    clazz = Class.query.get(class_id)
-    if not clazz or clazz.date_deleted:
-        return jsonify({"message": "Class not found"}), 404
-
-    data = request.get_json(silent=True)
-    if not data:
-        return jsonify({"message": "Invalid JSON body"}), 400
-
     try:
+        clazz = Class.query.get(class_id)
+        if not clazz or clazz.date_deleted:
+            return jsonify({"message": "Class not found"}), 404
+
+        data = request.get_json(silent=True)
+
+        if not data:
+            return jsonify({"message": "Invalid JSON body"}), 400
+
         clazz.description = data.get("description", clazz.description)
         clazz.suggested_level = data.get("suggested_level", clazz.suggested_level)
+        clazz.max_capacity = int(data["max_capacity"])
 
-        if "max_capacity" in data:
-            clazz.max_capacity = int(data["max_capacity"])
+        teacher_ids = data.get("teacher_ids")
+
+        if teacher_ids is not None:
+            new_teachers = (
+                User.query
+                .filter(User.id.in_(teacher_ids))
+                .filter(User.type == UserType.TEACHER)
+                .all()
+            )
+
+            clazz.teachers = new_teachers
 
         db.session.commit()
         return jsonify({"message": "Class updated successfully"}), 200
