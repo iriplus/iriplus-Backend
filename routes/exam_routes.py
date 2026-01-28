@@ -12,6 +12,7 @@ from controllers.exam_controller import (
     update_exam as controller_update_exam,
     delete_exam as controller_delete_exam,
 )
+from controllers.exam_generation_controller import generate_exam, get_full_exam, export_exam_pdf, export_exam_docx
 from utils.types_enum import ExamStatus
 
 exam_bp = Blueprint("exam_bp", __name__)
@@ -160,3 +161,20 @@ def delete_exam(exam_id: int):
         description: Server error
     """
     return controller_delete_exam(exam_id)
+
+@exam_bp.route("/api/exam/generate", methods=["POST"])
+def generate_exam_route():
+    return generate_exam()
+
+@exam_bp.route("/api/exam/<int:exam_id>/full", methods=["GET"])
+def get_exam_full(exam_id: int):
+    return get_full_exam(exam_id)
+
+
+@exam_bp.route("/api/exam/<int:exam_id>/export/pdf", methods=["GET"])
+def export_exam_pdf_route(exam_id: int):
+    return export_exam_pdf(exam_id)
+
+@exam_bp.route("/api/exam/<int:exam_id>/export/docx", methods=["GET"])
+def export_exam_docx_route(exam_id: int):
+    return export_exam_docx(exam_id)

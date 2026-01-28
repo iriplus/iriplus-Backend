@@ -16,6 +16,8 @@ import datetime  # stdlib
 from flask_sqlalchemy import SQLAlchemy  # third-party
 from sqlalchemy import Enum  # third-party
 from utils.types_enum import UserType  # local
+from sqlalchemy.dialects.mysql import LONGTEXT
+
 
 db = SQLAlchemy()
 
@@ -141,22 +143,48 @@ class Class(BaseModel):
 class Exam(BaseModel):
     """Represents an exam/assessment instance.
 
+    This entity models a concrete exam created for a class (and optionally
+    for a specific student). It may contain AI-generated exercises.
+
     Attributes:
-        status: Current lifecycle state (e.g., 'draft', 'open', 'graded').
-        notes: Optional free-form notes for the exam.
-        coordinator_id: FK to the coordinating user.
-        coordinator: Many-to-one: coordinating user (explicit FK to disambiguate).
-        exercises: many-to-many: tasks/questions in this exam.
-        class_id: FK to the class this exam belongs to.
-        class_exam: Many-to-one: the owning Class.
-        student_id: FK to the student taking this exam (if per-student).
-        student_exam: Many-to-one: the student tied to this exam record.
+        status: Current lifecycle state (e.g., 'draft', 'generating',
+            'generated', 'open', 'graded').
+        notes: Optional free-form notes for administrative purposes.
+
+        context: Teacher-provided source text used as the basis for
+            AI-generated exercises.
+
+        generated_snapshot: Raw JSON string returned by the LLM.
+            Stored for auditing, reproducibility, and debugging.
+
+        coordinator_id: Foreign key to the coordinating user.
+        coordinator_exam: Many-to-one relationship to the coordinating User.
+
+        exercise_types: Many-to-many relationship to Exercise catalog entries.
+            Represents which exercise archetypes are requested for this exam.
+
+        generated_exercises: One-to-many relationship to
+            ExamExerciseInstance. Stores the actual generated content
+            for each exercise type in this exam.
+
+        class_id: Foreign key to the owning Class.
+        class_exam: Many-to-one relationship to Class.
+
+        student_id: Optional foreign key to the student taking this exam
+            (used for per-student exam instances).
+        student_exam: Many-to-one relationship to User (student).
     """
 
     __tablename__ = "exam"
 
     status = db.Column(db.String(255), nullable=False)
     notes = db.Column(db.Text(1024), nullable=True)
+
+    # Teacher source text used for generation.
+    context = db.Column(db.Text, nullable=True)
+
+    # Full raw JSON returned by the LLM (for audit/debug).
+    generated_snapshot = db.Column(LONGTEXT, nullable=True)
 
     # Explicit foreign_keys avoids ambiguity because multiple FKs point to user.id.
     coordinator_id = db.Column(
@@ -170,11 +198,18 @@ class Exam(BaseModel):
         foreign_keys="Exam.coordinator_id",
     )
 
-    # Back-populates Exercise.exam
+    # Catalog of requested exercise archetypes (N:N).
     exercise_types = db.relationship(
         "Exercise",
         secondary=exam_exercise,
         back_populates="exams",
+    )
+
+    # Concrete generated exercise instances (1:N).
+    generated_exercises = db.relationship(
+        "ExamExerciseInstance",
+        back_populates="exam",
+        cascade="all, delete-orphan",
     )
 
     class_id = db.Column(
@@ -312,3 +347,68 @@ class User(BaseModel):
         secondary=teacher_class,
         back_populates="teachers",
     )
+
+
+class ExamExerciseInstance(BaseModel):
+    """Represents a concrete generated exercise inside an Exam.
+
+    This entity stores the actual AI-generated content for a specific
+    exercise type within a particular exam instance.
+
+    Unlike the Exercise model (which represents an exercise archetype
+    or catalog definition), this model stores the concrete content
+    generated for one exam.
+
+    Attributes:
+        exam_id: Foreign key to the owning Exam.
+        exam: Many-to-one relationship to Exam.
+
+        exercise_type_id: Foreign key to the Exercise catalog entry
+            (exercise archetype such as "Open Cloze", "Word Formation").
+        exercise_type: Many-to-one relationship to Exercise.
+
+        instructions: Text shown to the student explaining how to
+            complete this specific exercise instance.
+
+        content_json: JSON string (stored as LongText) containing the
+            generated questions/items for this exercise.
+            Structure is defined by the LLM output schema.
+
+        answer_key_json: JSON string (stored as LongText) containing
+            the answer key corresponding to content_json.
+
+    Notes:
+        - This model is required to persist AI-generated exams
+          in a structured and queryable way.
+        - content_json and answer_key_json are stored as text to
+          preserve flexibility and avoid strict schema coupling.
+        - Soft deletes are inherited from BaseModel.
+    """
+
+    __tablename__ = "exam_exercise_instance"
+
+    exam_id = db.Column(
+        db.Integer,
+        db.ForeignKey("exam.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    exam = db.relationship(
+        "Exam",
+        back_populates="generated_exercises",
+    )
+
+    exercise_type_id = db.Column(
+        db.Integer,
+        db.ForeignKey("exercise.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    exercise_type = db.relationship("Exercise")
+
+    instructions = db.Column(db.Text, nullable=False)
+
+    # Using LongText for potentially large JSON payloads (LLM output).
+    content_json = db.Column(LONGTEXT, nullable=False)
+
+    answer_key_json = db.Column(LONGTEXT, nullable=False)

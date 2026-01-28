@@ -15,3 +15,6 @@ itsdangerous
 flasgger
 redis
 requests
+sentence-transformers
+python-docx
+reportlab

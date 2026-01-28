@@ -7,6 +7,9 @@ blueprints for modular routes.
 Run this file directly to start the development server.
 """
 
+from dotenv import load_dotenv
+load_dotenv(".env")
+
 import os
 from flask import Flask
 from dotenv import load_dotenv
@@ -30,7 +33,7 @@ from extensions.redis_extension import get_redis_client
 # ----------------------------------------------------------------------------
 # Environment configuration
 # ----------------------------------------------------------------------------
-
+load_dotenv(".env")
 env_name = os.getenv("ENVIRONMENT", "dev")
 if env_name == "production":
     load_dotenv(".env.production")
