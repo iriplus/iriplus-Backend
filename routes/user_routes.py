@@ -304,7 +304,7 @@ def update_user_route(user_id: int):
 
 
 @user_bp.route("/api/user/<int:user_id>", methods=["DELETE"])
-@roles_required(UserType.COORDINATOR)
+@self_or_coordinator()
 def delete_user_route(user_id: int):
     """
     Soft delete a user (Coordinator only)

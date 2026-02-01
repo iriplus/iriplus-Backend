@@ -4,7 +4,7 @@ This module defines the CRUD operations for User entities.
 It provides endpoints for creating, retrieving, updating, and deleting users,
 including type-specific filtering for Students, Teachers, and Coordinators.
 """
-
+from datetime import datetime
 import bcrypt
 from flask import request, jsonify
 from sqlalchemy import func
@@ -332,26 +332,30 @@ def update_user(user_id: int):
 
 
 def delete_user(user_id: int):
-    """Permanently delete a user record from the database.
-
-    Args:
-        user_id: Primary key of the user to delete.
-
-    Returns:
-        JSON response with confirmation or error message.
     """
-    user = User.query.get(user_id)
+    Soft delete a user by setting date_deleted.
+    """
+    user = User.query.filter(
+        User.id == user_id,
+        User.date_deleted.is_(None)
+    ).first()
+
     if not user:
-        return jsonify({"message": "User not found."}), 404
+        return jsonify({"message": "User not found or already deleted."}), 404
 
     try:
-        db.session.delete(user)
+        user.date_deleted = datetime.now()
         db.session.commit()
-        return jsonify({"message": "User deleted successfully."}), 200
+
+        return jsonify({
+            "message": "User deleted successfully (soft delete).",
+            "date_deleted": user.date_deleted.isoformat()
+        }), 200
 
     except SQLAlchemyError as err:
         db.session.rollback()
         return jsonify({"message": f"Database error: {err}"}), 400
-    except Exception as err:  # pylint: disable=broad-except
+
+    except Exception as err:
         db.session.rollback()
         return jsonify({"message": f"Unexpected error: {err}"}), 500
