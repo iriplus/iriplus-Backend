@@ -40,7 +40,7 @@ def create_level():
 
 
 @level_bp.route("/api/level", methods=["GET"])
-@roles_required(UserType.COORDINATOR, UserType.TEACHER)
+@roles_required(UserType.COORDINATOR, UserType.TEACHER, UserType.STUDENT)
 def get_all_levels():
     """
     List all Levels (Coordinator and Teacher)

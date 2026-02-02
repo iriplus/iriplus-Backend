@@ -26,6 +26,7 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from orm_models import User, db
 from utils.brevo_mail import send_brevo_email
 from extensions.mail_extension import mail
+from utils.types_enum import UserType
 
 
 # ----------------------------------------------------------
@@ -171,8 +172,7 @@ def me_controller():
     if not user:
         return jsonify({"msg": "User not found"}), 404
 
-    return (
-        {
+    response = {
             "id": user.id,
             "name": user.name,
             "surname": user.surname,
@@ -182,9 +182,18 @@ def me_controller():
             "profile_picture": user.profile_picture,
             "is_verified": user.is_verified,
             "student_class_id": user.student_class_id,
-        },
-        200,
-    )
+            "accumulated_xp": user.accumulated_xp,
+        }
+    if user.type == UserType.TEACHER:
+        response["teacher_classes"] = [
+            {
+                "id": cls.id,
+                "description": cls.description,
+                "max_capacity": cls.max_capacity,
+            }
+            for cls in user.teacher_classes # type: ignore
+        ]
+    return response, 200
 
 
 # ----------------------------------------------------------
