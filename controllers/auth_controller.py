@@ -188,8 +188,10 @@ def me_controller():
         response["teacher_classes"] = [
             {
                 "id": cls.id,
+                "class_code": cls.class_code,
                 "description": cls.description,
                 "max_capacity": cls.max_capacity,
+                "students_count": len(cls.students)
             }
             for cls in user.teacher_classes # type: ignore
         ]
