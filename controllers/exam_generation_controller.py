@@ -39,6 +39,7 @@ def extract_json(text: str) -> str:
         raise ValueError("No JSON object found in model output")
     return text[start:end + 1]
 
+#No asigna id de profesora al examen. No contempla la maquina de estados que hicimos 
 def generate_exam():
     """
     Generate a new exam using RAG + LLM.
@@ -114,7 +115,7 @@ def generate_exam():
         )
 
         contexts = retrieve_course_context(
-            course_id=class_obj.class_code,
+            course_id=class_obj.description,
             level=level,
             exercises_description=exercise_list_text,
         )

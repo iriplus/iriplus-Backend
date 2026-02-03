@@ -18,3 +18,4 @@ requests
 sentence-transformers
 python-docx
 reportlab
+qdrant-client

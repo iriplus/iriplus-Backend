@@ -1,47 +1,38 @@
 """
 RAG service for retrieving historical exam context from Qdrant.
-
-This module encapsulates:
-- SentenceTransformer embeddings
-- Qdrant vector search
-- Course-level filtering
 """
 
 from typing import List
-import requests
-from sentence_transformers import SentenceTransformer
 import os
+from sentence_transformers import SentenceTransformer
+from qdrant_client import QdrantClient
+from qdrant_client.models import Filter, FieldCondition, MatchValue
 
 
-QDRANT_URL = os.getenv("QDRANT_URL")
-COLLECTION_NAME = os.getenv("QDRANT_COLLECTION")
+# ---- Environment variables ----
 
-if not QDRANT_URL or not COLLECTION_NAME:
+_qdrant_url = os.getenv("QDRANT_URL")
+_collection_name = os.getenv("QDRANT_COLLECTION")
+
+if _qdrant_url is None or _collection_name is None:
     raise ValueError("QDRANT_URL and QDRANT_COLLECTION must be defined in .env")
 
-# Load once at module import (important for performance)
-_embedder = SentenceTransformer("BAAI/bge-base-en-v1.5")
+QDRANT_URL: str = _qdrant_url
+COLLECTION_NAME: str = _collection_name
 
+# ---- Load once at import ----
+
+_embedder = SentenceTransformer("BAAI/bge-base-en-v1.5")
+_client = QdrantClient(url=QDRANT_URL)
 
 def retrieve_course_context(
     course_id: str,
     level: str,
     exercises_description: str,
-    k: int = 15,
+    k: int = 5,
 ) -> List[str]:
-    """
-    Retrieve relevant historical exam chunks for a given course.
 
-    Args:
-        course_id: Identifier of the course (used as Qdrant filter).
-        level: Cambridge level of the class.
-        exercises_description: Text describing requested exercises.
-        k: Number of vector matches to retrieve.
-
-    Returns:
-        List of retrieved text chunks.
-    """
-
+    course_id = course_id.strip()
     query_text = f"""
     Cambridge Level: {level}
     Exercises requested:
@@ -50,31 +41,39 @@ def retrieve_course_context(
 
     query_vector = _embedder.encode(query_text).tolist()
 
-    query = {
-        "vector": query_vector,
-        "limit": k,
-        "with_payload": True,
-        "filter": {
-            "must": [
-                {"key": "course_id", "match": {"value": course_id}}
-            ]
-        },
-    }
-
-    response = requests.post(
-        f"{QDRANT_URL}/collections/{COLLECTION_NAME}/points/search",
-        json=query,
-        timeout=15,
+    # Properly typed filter
+    qdrant_filter = Filter(
+        must=[
+            FieldCondition(
+                key="course_id",
+                match=MatchValue(value=course_id),
+            )
+        ]
     )
-    response.raise_for_status()
 
-    hits = response.json().get("result", [])
+    result = _client.query_points(
+        collection_name=COLLECTION_NAME,
+        query=query_vector,
+        limit=k,
+        with_payload=True,
+        query_filter=qdrant_filter,
+    )
+
+    hits = result.points
 
     contexts: List[str] = []
 
-    for hit in hits:
-        payload = hit.get("payload")
-        if payload and payload.get("text"):
-            contexts.append(payload["text"])
+    for i, hit in enumerate(hits, start=1):
+
+
+        payload = hit.payload
+
+        if not payload:
+            continue
+
+        text = payload.get("text")
+        if text:
+            preview = text[:200].replace("\n", " ")
+            contexts.append(text)
 
     return contexts
