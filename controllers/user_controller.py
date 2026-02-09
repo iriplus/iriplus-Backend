@@ -277,7 +277,7 @@ def get_all_users(user_type: str):
     except KeyError:
         return jsonify({"message": f"Invalid user type: {user_type}"}), 400
 
-    users = User.query.filter_by(type=user_enum).all()
+    users = User.query.filter(User.type== user_enum, User.date_deleted.is_(None)).all()
     if not users:
         return jsonify({"message": f"No {user_type.lower()}s found."}), 404
 
