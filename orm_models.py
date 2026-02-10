@@ -34,7 +34,7 @@ class BaseModel(db.Model):
     __abstract__ = True
 
     # Surrogate PK; widely used pattern with SQLAlchemy.
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True, unique=True, autoincrement=True)
 
     # Using local time; consider UTC (datetime.datetime.utcnow) if you need
     # timezone-agnostic timestamps across deployments.
@@ -97,7 +97,7 @@ class Level(BaseModel):
     description = db.Column(db.String(255), nullable=False, unique=True)
 
     # Text can store long free-form data; length is advisory in some backends.
-    cosmetic = db.Column(db.Text(1024), nullable=True)
+    cosmetic = db.Column(db.Text(1024), nullable=True, unique=True)
 
     # Back-populates User.student_level
     students = db.relationship("User", back_populates="student_level")
@@ -133,11 +133,7 @@ class Class(BaseModel):
     students = db.relationship("User", back_populates="student_class")
 
     # Many-to-many via the association table; back-populates User.teacher_classes
-    teachers = db.relationship(
-        "User",
-        secondary=teacher_class,
-        back_populates="teacher_classes",
-    )
+    teachers = db.relationship("User", secondary=teacher_class, back_populates="teacher_classes",)
 
 
 class Exam(BaseModel):
@@ -187,11 +183,7 @@ class Exam(BaseModel):
     generated_snapshot = db.Column(LONGTEXT, nullable=True)
 
     # Explicit foreign_keys avoids ambiguity because multiple FKs point to user.id.
-    coordinator_id = db.Column(
-        db.Integer,
-        db.ForeignKey("user.id", ondelete="CASCADE"),
-        nullable=True,
-    )
+    coordinator_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=True)
     coordinator_exam = db.relationship(
         "User",
         back_populates="coordinator_exams",
@@ -212,18 +204,10 @@ class Exam(BaseModel):
         cascade="all, delete-orphan",
     )
 
-    class_id = db.Column(
-        db.Integer,
-        db.ForeignKey("class.id", ondelete="CASCADE"),
-        nullable=False,
-    )
+    class_id = db.Column(db.Integer, db.ForeignKey("class.id", ondelete="CASCADE"), nullable=False)
     class_exam = db.relationship("Class", back_populates="exams")
 
-    student_id = db.Column(
-        db.Integer,
-        db.ForeignKey("user.id", ondelete="CASCADE"),
-        nullable=True,
-    )
+    student_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=True)
     student_exam = db.relationship(
         "User",
         back_populates="student_exams",
@@ -253,11 +237,7 @@ class Exercise(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
 
     # Fecha de alta
-    date_created = db.Column(
-        db.DateTime,
-        nullable=False,
-        server_default=db.func.current_timestamp(),
-    )
+    date_created = db.Column(db.DateTime, nullable=False, server_default=db.func.current_timestamp())
 
     # Fecha de baja lógica (soft delete)
     date_deleted = db.Column(db.DateTime, nullable=True)
@@ -297,18 +277,17 @@ class User(BaseModel):
     name = db.Column(db.String(255), nullable=False)
     surname = db.Column(db.String(255), nullable=False)
     email = db.Column(db.String(255), nullable=False, unique=True)
-    is_verified = db.Column(db.Boolean,nullable=False,default=False)
+    is_verified = db.Column(db.Boolean,nullable=False, default=False)
     passwd = db.Column(db.String(255), nullable=False)
     profile_picture = db.Column(db.Text(1024), nullable=True)
-    date_deleted = db.Column(db.DateTime, nullable=True)
 
     # SQLAlchemy Enum bound to the Python Enum, persisted as strings by default.
     type = db.Column(Enum(UserType), nullable=False)
 
     # Keep as string to avoid dropping leading zeros/formatting characters.
-    dni = db.Column(db.String(10), nullable=False)
+    dni = db.Column(db.String(10), nullable=False, unique=True)
 
-    accumulated_xp = db.Column(db.Integer, nullable=True)
+    accumulated_xp = db.Column(db.Integer, nullable=True, default=0)
 
     # Back-populates Exam.coordinator
     coordinator_exams = db.relationship(
@@ -319,11 +298,7 @@ class User(BaseModel):
 
     # Nullable to allow creating users before assigning a level.
     # If you want to enforce an initial level, set nullable=False and provide defaults.
-    student_level_id = db.Column(
-        db.Integer,
-        db.ForeignKey("level.id", ondelete="CASCADE"),
-        nullable=True,
-    )
+    student_level_id = db.Column(db.Integer, db.ForeignKey("level.id", ondelete="CASCADE"), nullable=True)
     student_level = db.relationship("Level", back_populates="students")
 
     # Back-populates Exam.student_exam
@@ -335,11 +310,7 @@ class User(BaseModel):
 
     # Nullable to support workflows where class assignment happens after signup.
     # Tighten by setting nullable=False if business rules require class on creation.
-    student_class_id = db.Column(
-        db.Integer,
-        db.ForeignKey("class.id", ondelete="CASCADE"),
-        nullable=True,
-    )
+    student_class_id = db.Column(db.Integer, db.ForeignKey("class.id", ondelete="CASCADE"), nullable=True)
     student_class = db.relationship("Class", back_populates="students")
 
     # Many-to-many via teacher_class; back-populates Class.teachers
@@ -388,22 +359,14 @@ class ExamExerciseInstance(BaseModel):
 
     __tablename__ = "exam_exercise_instance"
 
-    exam_id = db.Column(
-        db.Integer,
-        db.ForeignKey("exam.id", ondelete="CASCADE"),
-        nullable=False,
-    )
+    exam_id = db.Column(db.Integer, db.ForeignKey("exam.id", ondelete="CASCADE"), nullable=False)
 
     exam = db.relationship(
         "Exam",
         back_populates="generated_exercises",
     )
 
-    exercise_type_id = db.Column(
-        db.Integer,
-        db.ForeignKey("exercise.id", ondelete="CASCADE"),
-        nullable=False,
-    )
+    exercise_type_id = db.Column(db.Integer, db.ForeignKey("exercise.id", ondelete="CASCADE"), nullable=False)
 
     exercise_type = db.relationship("Exercise")
 
