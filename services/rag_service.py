@@ -25,13 +25,10 @@ COLLECTION_NAME: str = _collection_name
 _embedder = SentenceTransformer("BAAI/bge-base-en-v1.5")
 _client = QdrantClient(url=QDRANT_URL)
 
-def retrieve_course_context(
-    course_id: str,
-    level: str,
-    exercises_description: str,
-    k: int = 5,
-) -> List[str]:
-
+def retrieve_course_context(course_id: str, level: str, exercises_description: str, k: int = 5) -> List[str]:
+    """
+    Retrieve relevant historical exam context for a given course, level, and exercise description.
+    """
     course_id = course_id.strip()
     query_text = f"""
     Cambridge Level: {level}
@@ -63,17 +60,11 @@ def retrieve_course_context(
 
     contexts: List[str] = []
 
-    for i, hit in enumerate(hits, start=1):
-
-
+    for _, hit in enumerate(hits, start=1):
         payload = hit.payload
-
         if not payload:
             continue
-
         text = payload.get("text")
         if text:
-            preview = text[:200].replace("\n", " ")
             contexts.append(text)
-
     return contexts

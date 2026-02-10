@@ -24,8 +24,8 @@ from flask_jwt_extended import (
 import bcrypt
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from orm_models import User, db
-from utils.brevo_mail import send_brevo_email
 from extensions.mail_extension import mail
+from utils.brevo_mail import send_brevo_email
 from utils.types_enum import UserType
 
 

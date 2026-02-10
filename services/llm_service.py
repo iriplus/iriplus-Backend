@@ -6,9 +6,9 @@ This module encapsulates:
 - Model invocation (Ollama)
 """
 
-import requests
 import os
 from typing import cast
+import requests
 
 OLLAMA_URL = cast(str, os.getenv("OLLAMA_URL"))
 MODEL_NAME = cast(str, os.getenv("OLLAMA_MODEL"))
