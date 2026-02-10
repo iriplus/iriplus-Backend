@@ -146,7 +146,7 @@ def get_user_route(user_id: int):
 
 
 @user_bp.route("/api/user/email/<string:email>", methods=["GET"])
-@roles_required(UserType.COORDINATOR)
+@self_or_coordinator()
 def get_user_by_email(email: str):
     """
     Retrieve a user by email (Coordinator only).
@@ -176,7 +176,7 @@ def get_user_by_email(email: str):
 
 
 @user_bp.route("/api/user/dni/<string:dni>", methods=["GET"])
-@roles_required(UserType.COORDINATOR)
+@self_or_coordinator()
 def get_user_by_dni(dni: str):
     """
     Retrieve a user by DNI (Coordinator only).
