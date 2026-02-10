@@ -169,8 +169,10 @@ def me_controller():
     user_id = get_jwt_identity()
     user = db.session.get(User, user_id)
 
-    if not user:
+    if not user or user.date_deleted is not None:
         return jsonify({"msg": "User not found"}), 404
+    if user.is_verified is False:
+        return jsonify({"msg": "Email not verified"}), 403
 
     response = {
             "id": user.id,
@@ -257,7 +259,7 @@ def verify_email_controller(token: str):
 
     user = User.query.filter_by(email=email).first()
 
-    if not user:
+    if not user or user.date_deleted is not None:
         return jsonify({"msg": "User not found"}), 404
 
     if user.is_verified:
@@ -293,7 +295,7 @@ def send_reset_code_controller():
     normalized = normalize_email(email)
 
     user = User.query.filter_by(email=normalized).first()
-    if user:
+    if user and user.date_deleted is None and user.is_verified:
         code = generate_code()
         ttl_seconds = get_reset_ttl_seconds()
 
@@ -390,7 +392,7 @@ def reset_password_controller():
     if not redis_client.get(verification_key):
         return jsonify({"msg": "Verification required"}), 403
     user = User.query.filter_by(email=normalized).first()
-    if not user or user.date_deleted:
+    if not user or user.date_deleted is not None or user.is_verified is False:
         redis_client.delete(verification_key)
         return jsonify({"msg": "Invalid request"}), 404
 

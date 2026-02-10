@@ -15,8 +15,8 @@ Notes:
 import datetime  # stdlib
 from flask_sqlalchemy import SQLAlchemy  # third-party
 from sqlalchemy import Enum  # third-party
-from utils.types_enum import UserType  # local
 from sqlalchemy.dialects.mysql import LONGTEXT
+from utils.types_enum import UserType  # local
 
 
 db = SQLAlchemy()

@@ -43,12 +43,12 @@ def _serialize_class(clazz: Class) -> dict:
         "students": [
             serialize_user(student)
             for student in students
-            if not student.date_deleted
+            if not student.date_deleted and student.is_verified
         ],
         "teachers": [
             serialize_user(teacher)
             for teacher in teachers
-            if not teacher.date_deleted
+            if not teacher.date_deleted and teacher.is_verified
         ],
         "teacher_ids": [t.id for t in teachers],
     }
@@ -128,7 +128,7 @@ def get_class_by_id(class_id: int):
     """
     try:
         clazz = Class.query.get(class_id)
-        if not clazz or clazz.date_deleted:
+        if not clazz or clazz.date_deleted is not None:
             return jsonify({"message": "Class not found"}), 404
 
         return jsonify(_serialize_class(clazz)), 200
@@ -150,7 +150,7 @@ def get_class_by_class_code(class_code: str):
         normalized = class_code.strip().upper()
 
         clazz = Class.query.filter(func.trim(Class.class_code) == normalized).first()
-        if not clazz or clazz.date_deleted:
+        if not clazz or clazz.date_deleted is not None:
             return jsonify({"message": "Class not found"}), 404
 
         return jsonify(_serialize_class(clazz)), 200
@@ -170,7 +170,7 @@ def update_class(class_id: int):
     """
     try:
         clazz = Class.query.get(class_id)
-        if not clazz or clazz.date_deleted:
+        if not clazz or clazz.date_deleted is not None:
             return jsonify({"message": "Class not found"}), 404
 
         data = request.get_json(silent=True)
@@ -218,7 +218,7 @@ def delete_class(class_id: int):
         JSON with a success message, or 404 if the class does not exist.
     """
     clazz = Class.query.get(class_id)
-    if not clazz or clazz.date_deleted:
+    if not clazz or clazz.date_deleted is not None:
         return jsonify({"message": "Class not found"}), 404
 
     try:

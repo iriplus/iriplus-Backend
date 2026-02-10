@@ -94,7 +94,7 @@ def get_level_by_id(level_id: int):
     """
     try:
         level = Level.query.get(level_id)
-        if not level or level.date_deleted:
+        if not level or level.date_deleted is not None:
             return jsonify({"message": "level not found"}), 404
         return jsonify(_serialize_level(level)), 200
     except SQLAlchemyError as err:
@@ -112,8 +112,8 @@ def update_level(level_id: int):
         JSON with a success message or an error status/message.
     """
     level = Level.query.get(level_id)
-    if not level or level.date_deleted:
-        return jsonify({"message": "Level not found"},404)
+    if not level or level.date_deleted is not None:
+        return jsonify({"message": "Level not found"}), 404
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"message": "Invalid JSON body"}), 400
@@ -143,33 +143,10 @@ def soft_delete_level(level_id:int):
         JSON with a success message, or 404 if the Level does not exist.
     """
     level = Level.query.get(level_id)
-    if not level or level.date_deleted:
+    if not level or level.date_deleted is not None:
         return jsonify({"message":"Level not found"}), 404
     try:
         level.date_deleted = datetime.datetime.now()
-        db.session.commit()
-        return jsonify({"message":f"Level {level.id} deleted successfully"}), 200
-    except SQLAlchemyError as err:
-        db.session.rollback()
-        return jsonify({"message": f"Database error: {err}"}), 500
-    except Exception as err:  # pylint: disable=broad-except
-        db.session.rollback()
-        return jsonify({"message": {f"Something went wrong: {err}"}}), 500
-
-def hard_delete_level(level_id:int):
-    """Hard-delete a Level.
-
-    Args:
-        level_id: Primary key of the Level to hard-delete.
-
-    Returns:
-        JSON with a success message, or 404 if the Level does not exist.
-    """
-    level = Level.query.get(level_id)
-    if not level or level.date_deleted:
-        return jsonify({"message":"Level not found"}), 404
-    try:
-        db.session.delete(level)
         db.session.commit()
         return jsonify({"message":f"Level {level.id} deleted successfully"}), 200
     except SQLAlchemyError as err:

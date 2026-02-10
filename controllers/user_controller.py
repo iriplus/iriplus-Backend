@@ -39,7 +39,8 @@ def serialize_user(user: User) -> dict:
         "accumulated_xp": user.accumulated_xp,
         "student_level_id": user.student_level_id,
         "student_class_id": user.student_class_id,
-        "is_verified": user.is_verified
+        "is_verified": user.is_verified,
+        "date_created": user.date_created.isoformat() if user.date_created else None,
     }
 
 # ---------------------------------------------------------------------------
@@ -64,11 +65,8 @@ def create_user(user_type: UserType):
         required_fields.append("student_class_id")
     missing_fields = [field for field in required_fields if field not in data]
     if missing_fields:
-        return jsonify({
-            "message": f"Missing required fields: {', '.join(missing_fields)}"
-        }), 400
+        return jsonify({"message": f"Missing required fields: {', '.join(missing_fields)}"}), 400
     try:
-
         # Hash the provided password using bcrypt with salt.
         hashed_password = bcrypt.hashpw(
             data["passwd"].encode("utf-8"), bcrypt.gensalt()
@@ -86,6 +84,8 @@ def create_user(user_type: UserType):
             profile_picture=data.get("profile_picture"),
             student_level_id=data.get("student_level_id"),
             student_class_id=data.get("student_class_id"),
+            date_created=datetime.now(),
+            is_verified=False
         )
 
         # Commit transaction.
@@ -145,26 +145,15 @@ def register_student():
 
     try:
         # Check for existing email or DNI
-        existing_email = User.query.filter(
-            func.lower(User.email) == email
-        ).first()
-
+        existing_email = User.query.filter(func.lower(User.email) == email).first()
         if existing_email and not existing_email.date_deleted:
             return jsonify({"message": "Email already exists."}), 409
-        existing_dni = User.query.filter(
-            func.trim(User.dni) == dni
-        ).first()
-
+        existing_dni = User.query.filter(func.trim(User.dni) == dni).first()
         if existing_dni and not existing_dni.date_deleted:
             return jsonify({"message": "DNI already exists."}), 409
-
         # Verify class existence and capacity
-        clazz = Class.query.filter(
-            func.trim(Class.class_code) == class_code,
-            Class.date_deleted.is_(None),
-        ).first()
-
-        if not clazz:
+        clazz = Class.query.filter(func.trim(Class.class_code) == class_code).first()
+        if not clazz or clazz.date_deleted is not None:
             return jsonify({"message": "Class not found."}), 404
         current_students = (
             db.session.query(func.count(User.id)) # pylint: disable=not-callable
@@ -173,8 +162,6 @@ def register_student():
                 User.date_deleted.is_(None),
             ).scalar()
         )
-
-        print(current_students, clazz.max_capacity)
 
         if current_students >= clazz.max_capacity:
             return jsonify({"message": "Class is full."}), 422
@@ -191,8 +178,11 @@ def register_student():
             passwd=hashed_password,
             dni=dni,
             type=UserType.STUDENT,
+            accumulated_xp=0,
+            student_level_id=None,
             student_class_id=clazz.id,
             accumulated_xp=0,
+            date_created=datetime.now(),
             is_verified=False
         )
 
@@ -223,7 +213,7 @@ def get_user(user_id: int):
         JSON response containing user data or a 404 message.
     """
     user = User.query.get(user_id)
-    if not user or user.date_deleted:
+    if not user or user.date_deleted is not None:
         return jsonify({"message": "User not found."}), 404
 
     return jsonify(serialize_user(user)), 200
@@ -240,7 +230,7 @@ def get_user_by_email(user_email: str):
     normalized_email = user_email.strip().lower()
 
     user = User.query.filter(User.email == normalized_email).first()
-    if not user or user.date_deleted:
+    if not user or user.date_deleted is not None:
         return jsonify({"message": "User not found."}), 404
 
     return jsonify(serialize_user(user)), 200
@@ -256,7 +246,7 @@ def get_user_by_dni(dni: str):
     normalized_dni = dni.strip()
 
     user = User.query.filter(func.trim(User.dni) == normalized_dni).first()
-    if not user or user.date_deleted:
+    if not user or user.date_deleted is not None:
         return jsonify({"message": "User not found."}), 404
 
     return jsonify(serialize_user(user)), 200
@@ -294,7 +284,7 @@ def update_user(user_id: int):
         JSON response with updated user data or an error message.
     """
     user = User.query.get(user_id)
-    if not user:
+    if not user or user.date_deleted is not None:
         return jsonify({"message": "User not found."}), 404
 
     data = request.get_json(silent=True)
@@ -336,11 +326,10 @@ def delete_user(user_id: int):
     Soft delete a user by setting date_deleted.
     """
     user = User.query.filter(
-        User.id == user_id,
-        User.date_deleted.is_(None)
+        User.id == user_id
     ).first()
 
-    if not user:
+    if not user or user.date_deleted is not None:
         return jsonify({"message": "User not found or already deleted."}), 404
 
     try:
