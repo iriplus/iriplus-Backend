@@ -181,7 +181,6 @@ def register_student():
             accumulated_xp=0,
             student_level_id=None,
             student_class_id=clazz.id,
-            accumulated_xp=0,
             date_created=datetime.now(),
             is_verified=False
         )
