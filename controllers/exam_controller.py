@@ -237,3 +237,28 @@ def delete_exam(exam_id: int):
     except Exception as err:  # pylint: disable=broad-except
         db.session.rollback()
         return jsonify({"message": {f"Something went wrong: {err}"}}), 500
+
+
+def get_all_exams_controller():
+    try:
+        exams = Exam.query.filter_by(date_deleted=None).all()
+
+
+        result = []
+        for exam in exams:
+            result.append({
+                "id": exam.id,
+                "status": exam.status.value if hasattr(exam.status, "value") else exam.status,
+                "context": exam.context,
+                "class_id": exam.class_id,
+                "generated_exercises": [],
+                "user_id": exam.user_id,
+                "date_created": exam.date_created
+            })
+
+
+        return jsonify(result), 200
+
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

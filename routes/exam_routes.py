@@ -13,7 +13,7 @@ from controllers.exam_controller import (
     update_exam as controller_update_exam,
     delete_exam as controller_delete_exam,
 )
-from controllers.exam_generation_controller import generate_exam, get_full_exam, export_exam_pdf, export_exam_docx, refine_exam
+from controllers.exam_generation_controller import generate_exam, get_full_exam, export_exam_pdf, export_exam_docx, refine_exam, get_all_exams_controller
 from utils.types_enum import ExamStatus
 
 exam_bp = Blueprint("exam_bp", __name__)
@@ -72,7 +72,7 @@ def get_all_exams():
       500:
         description: Server error
     """
-    return controller_get_all_exams()
+    return get_all_exams_controller()
 
 
 @exam_bp.route("/api/exam/<int:exam_id>", methods=["GET"])
