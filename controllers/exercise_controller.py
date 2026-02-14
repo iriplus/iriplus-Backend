@@ -23,14 +23,9 @@ def _serialize_exercise(exercise: Exercise) -> dict:
     """
     return {
         "id": exercise.id,
-        "archetype": exercise.archetype,
-        "content": exercise.content,
-        "rubric": exercise.rubric,
-        "key": exercise.key,
         "date_created": exercise.date_created.isoformat() if exercise.date_created else None,
-        "exam": {
-            "id": exercise.exam.id,
-        }
+        "name": exercise.name,
+        "content_description": exercise.content_description
     }
 
 
@@ -38,11 +33,8 @@ def create_exercise(exercise_archetype: ExerciseArchetype):
     """Create an Exercise record from the JSON request body.
 
     Expected JSON fields:
-        - archetype (str)
-        - content (text)
-        - rubric (str)
-        - key (int)
-        - exam_id (int)
+        - name (str)
+        - content_description (text)
     
     Returns:
         JSON payload with the new resource id on success, or an error message.
@@ -91,7 +83,7 @@ def create_exercise(exercise_archetype: ExerciseArchetype):
 
 
 def get_all_exercises():
-    """Return all non-deleted exercises as a JSON array."""
+    """Return all non-deleted types of exercises as a JSON array."""
     try:
         exercises = Exercise.query.filter_by(date_deleted=None).all()
         result = [_serialize_exercise(exercise) for exercise in exercises]

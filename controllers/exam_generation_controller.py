@@ -13,12 +13,11 @@ This module orchestrates:
 """
 
 import json
+import datetime
 from typing import cast, List
-from flask import request, jsonify
+import io
+from flask import request, jsonify, send_file
 from sqlalchemy.exc import SQLAlchemyError
-from orm_models import db, Exam, Class, Exercise, ExamExerciseInstance
-from services.rag_service import retrieve_course_context
-from services.llm_service import build_prompt, generate_exam_from_llm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
 from reportlab.platypus import ListFlowable, ListItem
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -28,18 +27,26 @@ from reportlab.platypus import KeepTogether
 from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from flask import send_file
-import io
-
+from services.llm_service import build_prompt, generate_exam_from_llm
+from services.rag_service import retrieve_course_context
+from orm_models import db, Exam, Class, Exercise, ExamExerciseInstance
 
 def extract_json(text: str) -> str:
+    """
+    Docstring for extract_json
+    
+    :param text: Description
+    :type text: str
+    :return: Description
+    :rtype: str
+    """
     start = text.find("{")
     end = text.rfind("}")
     if start == -1 or end == -1:
         raise ValueError("No JSON object found in model output")
     return text[start:end + 1]
 
-#No asigna id de profesora al examen. No contempla la maquina de estados que hicimos 
+#No asigna id de profesora al examen. No contempla la maquina de estados que hicimos
 def generate_exam():
     """
     Generate a new exam using RAG + LLM.
@@ -192,7 +199,6 @@ def generate_exam():
                 "exam_id": new_exam.id,
             }
         ), 201
-
     except SQLAlchemyError as err:
         db.session.rollback()
         return jsonify({"message": f"Database error: {err}"}), 500
@@ -200,8 +206,6 @@ def generate_exam():
     except Exception as err:  # pylint: disable=broad-except
         db.session.rollback()
         return jsonify({"message": f"Unexpected error: {err}"}), 500
-    
-
 def get_full_exam(exam_id: int):
     """
     Return a fully reconstructed exam ready for frontend rendering.
@@ -211,9 +215,6 @@ def get_full_exam(exam_id: int):
         exam = Exam.query.get(exam_id)
         if not exam or exam.date_deleted:
             return jsonify({"message": "Exam not found"}), 404
-
-        """ if exam.status != "GENERATED":
-            return jsonify({"message": "Exam not generated yet"}), 400 """
 
         result = {
             "id": exam.id,
@@ -257,7 +258,7 @@ def build_exam_html(exam: Exam) -> str:
     <body>
     """
 
-    html += f"<h1>Exam</h1>"
+    html += "<h1>Exam</h1>"
     html += f"<p><strong>Class ID:</strong> {exam.class_id}</p>"
     html += f"<p><strong>Date:</strong> {exam.date_created}</p>"
     html += "<hr>"
@@ -426,3 +427,24 @@ def export_exam_docx(exam_id: int):
         download_name=f"exam_{exam_id}.docx",
         mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
+
+def delete_exam(exam_id: int):
+    """
+    Docstring for delete_exam
+    
+    :param exam_id: Description
+    :type exam_id: int
+    """
+    exam = Exam.query.get(exam_id)
+    if not exam or exam.date_deleted:
+        return jsonify({"message": "Exam not found"}), 404
+    try:
+        exam.date_deleted = datetime.datetime.now()
+        db.session.commit()
+        return jsonify({"message":f"Level {exam.id} deleted successfully"}), 200
+    except SQLAlchemyError as err:
+        db.session.rollback()
+        return jsonify({"message": f"Database error: {err}"}), 500
+    except Exception as err:  # pylint: disable=broad-except
+        db.session.rollback()
+        return jsonify({"message": {f"Something went wrong: {err}"}}), 500

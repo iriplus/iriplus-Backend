@@ -164,17 +164,48 @@ def delete_exam(exam_id: int):
 
 @exam_bp.route("/api/exam/generate", methods=["POST"])
 def generate_exam_route():
+    """
+    Docstring for generate_exam_route
+    """
     return generate_exam()
 
 @exam_bp.route("/api/exam/<int:exam_id>/full", methods=["GET"])
 def get_exam_full(exam_id: int):
+    """
+    Docstring for get_exam_full
+    
+    :param exam_id: Description
+    :type exam_id: int
+    """
     return get_full_exam(exam_id)
 
 
 @exam_bp.route("/api/exam/<int:exam_id>/export/pdf", methods=["GET"])
 def export_exam_pdf_route(exam_id: int):
+    """
+    Docstring for export_exam_pdf_route
+    
+    :param exam_id: Description
+    :type exam_id: int
+    """
     return export_exam_pdf(exam_id)
 
 @exam_bp.route("/api/exam/<int:exam_id>/export/docx", methods=["GET"])
 def export_exam_docx_route(exam_id: int):
+    """
+    Docstring for export_exam_docx_route
+    
+    :param exam_id: Description
+    :type exam_id: int
+    """
     return export_exam_docx(exam_id)
+
+@exam_bp.route("/api/exam/<int:exam_id>", methods=["DELETE"])
+def delete_exam_route(exam_id: int):
+    """
+    Docstring for delete_exam_route
+    
+    :param exam_id: Description
+    :type exam_id: int
+    """
+    return delete_exam(exam_id)

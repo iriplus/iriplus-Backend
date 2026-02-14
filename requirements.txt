@@ -3,7 +3,7 @@ Flask
 Flask-SQLAlchemy
 pymysql
 Flask-migrate
-cryptography
+cryptography==3.4.8
 python-dotenv
 bcrypt
 gunicorn
