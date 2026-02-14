@@ -5,6 +5,7 @@ Each route delegates its logic to the corresponding controller function.
 """
 
 from flask import Blueprint
+from flask_jwt_extended import jwt_required
 from controllers.exam_controller import (
     create_exam as controller_create_exam,
     get_all_exams as controller_get_all_exams,
@@ -12,13 +13,14 @@ from controllers.exam_controller import (
     update_exam as controller_update_exam,
     delete_exam as controller_delete_exam,
 )
-from controllers.exam_generation_controller import generate_exam, get_full_exam, export_exam_pdf, export_exam_docx
+from controllers.exam_generation_controller import generate_exam, get_full_exam, export_exam_pdf, export_exam_docx, refine_exam
 from utils.types_enum import ExamStatus
 
 exam_bp = Blueprint("exam_bp", __name__)
 
 
 @exam_bp.route("/api/exam", methods=["POST"])
+@jwt_required()
 def create_exam():
     """
     Create a new Exam
@@ -49,6 +51,7 @@ def create_exam():
 
 
 @exam_bp.route("/api/exam", methods=["GET"])
+@jwt_required()
 def get_all_exams():
     """
     List all Exams
@@ -73,6 +76,7 @@ def get_all_exams():
 
 
 @exam_bp.route("/api/exam/<int:exam_id>", methods=["GET"])
+@jwt_required()
 def get_exam_by_id(exam_id: int):
     """
     Get an Exam by ID
@@ -104,6 +108,7 @@ def get_exam_by_id(exam_id: int):
 
 
 @exam_bp.route("/api/exam/<int:exam_id>", methods=["PUT"])
+@jwt_required()
 def update_exam(exam_id: int):
     """
     Update an Exam
@@ -138,6 +143,7 @@ def update_exam(exam_id: int):
 
 
 @exam_bp.route("/api/exam/<int:exam_id>", methods=["DELETE"])
+@jwt_required()
 def delete_exam(exam_id: int):
     """
     Soft delete an Exam
@@ -163,6 +169,7 @@ def delete_exam(exam_id: int):
     return controller_delete_exam(exam_id)
 
 @exam_bp.route("/api/exam/generate", methods=["POST"])
+@jwt_required()
 def generate_exam_route():
     """
     Docstring for generate_exam_route
@@ -170,6 +177,7 @@ def generate_exam_route():
     return generate_exam()
 
 @exam_bp.route("/api/exam/<int:exam_id>/full", methods=["GET"])
+@jwt_required()
 def get_exam_full(exam_id: int):
     """
     Docstring for get_exam_full
@@ -181,6 +189,7 @@ def get_exam_full(exam_id: int):
 
 
 @exam_bp.route("/api/exam/<int:exam_id>/export/pdf", methods=["GET"])
+@jwt_required()
 def export_exam_pdf_route(exam_id: int):
     """
     Docstring for export_exam_pdf_route
@@ -190,7 +199,19 @@ def export_exam_pdf_route(exam_id: int):
     """
     return export_exam_pdf(exam_id)
 
+@exam_bp.route("/api/exam/<int:exam_id>/refine", methods=["POST"])
+@jwt_required()
+def refine_exam_route(exam_id: int):
+    """
+    Docstring for refine_exam_route
+    
+    :param exam_id: Description
+    :type exam_id: int
+    """
+    return refine_exam(exam_id)
+
 @exam_bp.route("/api/exam/<int:exam_id>/export/docx", methods=["GET"])
+@jwt_required()
 def export_exam_docx_route(exam_id: int):
     """
     Docstring for export_exam_docx_route
@@ -201,6 +222,7 @@ def export_exam_docx_route(exam_id: int):
     return export_exam_docx(exam_id)
 
 @exam_bp.route("/api/exam/<int:exam_id>", methods=["DELETE"])
+@jwt_required()
 def delete_exam_route(exam_id: int):
     """
     Docstring for delete_exam_route
