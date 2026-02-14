@@ -207,11 +207,11 @@ class Exam(BaseModel):
     class_id = db.Column(db.Integer, db.ForeignKey("class.id", ondelete="CASCADE"), nullable=False)
     class_exam = db.relationship("Class", back_populates="exams")
 
-    student_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=True)
-    student_exam = db.relationship(
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=True)
+    user_exam = db.relationship(
         "User",
-        back_populates="student_exams",
-        foreign_keys="Exam.student_id",
+        back_populates="assigned_exams",
+        foreign_keys="Exam.user_id",
     )
 
 
@@ -302,10 +302,10 @@ class User(BaseModel):
     student_level = db.relationship("Level", back_populates="students")
 
     # Back-populates Exam.student_exam
-    student_exams = db.relationship(
+    assigned_exams = db.relationship(
         "Exam",
-        back_populates="student_exam",
-        foreign_keys="Exam.student_id",
+        back_populates="user_exam",
+        foreign_keys="Exam.user_id",
     )
 
     # Nullable to support workflows where class assignment happens after signup.
