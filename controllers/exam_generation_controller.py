@@ -18,7 +18,7 @@ from flask import request, jsonify
 from sqlalchemy.exc import SQLAlchemyError
 from orm_models import db, Exam, Class, Exercise, ExamExerciseInstance
 from services.rag_service import retrieve_course_context
-from services.llm_service import build_prompt, generate_exam_from_llm
+from services.llm_service import build_prompt, generate_exam_from_llm, build_refinement_prompt
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
 from reportlab.platypus import ListFlowable, ListItem
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -30,6 +30,9 @@ from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from flask import send_file
 import io
+from utils.types_enum import ExamStatus
+from flask_jwt_extended import (get_jwt_identity)
+from orm_models import User
 
 
 def extract_json(text: str) -> str:
@@ -62,12 +65,16 @@ def generate_exam():
     class_id = data.get("class_id")
     context = data.get("context")
     exercise_type_ids = data.get("exercise_type_ids")
+    user_id = get_jwt_identity()
+    user = db.session.get(User, user_id)
 
     if not class_id or not context or not exercise_type_ids:
         return jsonify({"message": "Missing required fields"}), 400
 
     if not isinstance(exercise_type_ids, list) or not exercise_type_ids:
         return jsonify({"message": "exercise_type_ids must be a non-empty list"}), 400
+    if not user:
+        return jsonify({"message":"Teacher not found"}), 404
 
     try:
         # ------------------------
@@ -94,7 +101,7 @@ def generate_exam():
         # Create Exam (GENERATING)
         # ------------------------
         new_exam = Exam(
-            status="GENERATING",
+            status=ExamStatus.GENERATING.value,
             class_id=class_id,
             context=context,
         )
@@ -182,7 +189,7 @@ def generate_exam():
         # Persist Results
         # ------------------------
         new_exam.generated_snapshot = raw_output
-        new_exam.status = "Pending Review"
+        new_exam.status = ExamStatus.GENERATING.value
 
         db.session.commit()
 
@@ -201,6 +208,96 @@ def generate_exam():
         db.session.rollback()
         return jsonify({"message": f"Unexpected error: {err}"}), 500
     
+def refine_exam(exam_id: int):
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"message": "Invalid JSON body"}), 400
+
+    feedback = data.get("feedback")
+    if not feedback:
+        return jsonify({"message": "Missing feedback"}), 400
+
+    exam = Exam.query.get(exam_id)
+    if not exam or exam.date_deleted:
+        return jsonify({"message": "Exam not found"}), 404
+
+    if exam.user_id != get_jwt_identity():
+        return jsonify({"message": "Unauthorized"}), 403
+
+    if exam.status != ExamStatus.GENERATING.value:
+        return jsonify({"message": "Exam is not editable in current state"}), 400
+
+    try:
+        # Nivel para el prompt (mismo criterio que en generate)
+        level = exam.class_exam.suggested_level
+
+        refinement_prompt = build_refinement_prompt(
+            level=level,
+            original_snapshot=exam.generated_snapshot,
+            teacher_feedback=feedback,
+        )
+
+        raw_output = generate_exam_from_llm(refinement_prompt)
+
+        cleaned_json = extract_json(raw_output)
+        parsed_output = json.loads(cleaned_json)
+
+        if "exercises" not in parsed_output:
+            return jsonify({"message": "Invalid exam structure returned by model"}), 500
+
+        # Validar que no cambien los exercise types originales
+        original_types = {ex.name.lower() for ex in exam.exercise_types}
+        returned_types = {
+            ex_block["exercise_type"].lower()
+            for ex_block in parsed_output["exercises"]
+        }
+
+        if original_types != returned_types:
+            return jsonify({
+                "message": "Refinement cannot change exercise types"
+            }), 400
+
+        # borrar instancias previas
+        ExamExerciseInstance.query.filter_by(exam_id=exam.id).delete()
+
+        for exercise_block in parsed_output["exercises"]:
+            exercise_type = Exercise.query.filter(
+                db.func.lower(Exercise.name)
+                == exercise_block["exercise_type"].lower()
+            ).first()
+
+            # FIX Pylance: validar None explícitamente
+            if not exercise_type:
+                db.session.rollback()
+                return jsonify({
+                    "message": f"Exercise type '{exercise_block['exercise_type']}' not found"
+                }), 400
+
+            instance = ExamExerciseInstance(
+                exam_id=exam.id,
+                exercise_type_id=exercise_type.id,
+                instructions=exercise_block["instructions"],
+                content_json=json.dumps(exercise_block["items"]),
+                answer_key_json=json.dumps({
+                    "answers": [
+                        item["answer"] for item in exercise_block["items"]
+                    ]
+                })
+            )
+            db.session.add(instance)
+
+        exam.generated_snapshot = raw_output
+        # estado se mantiene en GENERATING hasta "Send to review"
+        exam.status = ExamStatus.GENERATING.value
+
+        db.session.commit()
+
+        return jsonify({"message": "Exam refined successfully"}), 200
+
+    except Exception as err:  # pylint: disable=broad-except
+        db.session.rollback()
+        return jsonify({"message": str(err)}), 500
+
 
 def get_full_exam(exam_id: int):
     """
@@ -236,6 +333,7 @@ def get_full_exam(exam_id: int):
 
     except Exception as err:  # pylint: disable=broad-except
         return jsonify({"message": f"Unexpected error: {err}"}), 500
+    
 
 def build_exam_html(exam: Exam) -> str:
     """

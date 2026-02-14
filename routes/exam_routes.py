@@ -12,7 +12,7 @@ from controllers.exam_controller import (
     update_exam as controller_update_exam,
     delete_exam as controller_delete_exam,
 )
-from controllers.exam_generation_controller import generate_exam, get_full_exam, export_exam_pdf, export_exam_docx
+from controllers.exam_generation_controller import generate_exam, get_full_exam, export_exam_pdf, export_exam_docx, refine_exam
 from utils.types_enum import ExamStatus
 
 exam_bp = Blueprint("exam_bp", __name__)
@@ -175,6 +175,9 @@ def get_exam_full(exam_id: int):
 def export_exam_pdf_route(exam_id: int):
     return export_exam_pdf(exam_id)
 
+@exam_bp.route("/api/exam/<int:exam_id>/refine", methods=["GET"])
+def refine_exam_route(exam_id: int):
+    return refine_exam(exam_id)
 @exam_bp.route("/api/exam/<int:exam_id>/export/docx", methods=["GET"])
 def export_exam_docx_route(exam_id: int):
     return export_exam_docx(exam_id)

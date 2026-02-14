@@ -67,6 +67,60 @@ Required JSON schema:
 }}
 """
 
+def build_refinement_prompt(
+    level: str,
+    original_snapshot: str,
+    teacher_feedback: str,
+) -> str:
+    """
+    Build the prompt for refining an already generated exam
+    based on teacher feedback.
+
+    The model must modify the existing exam, not recreate it
+    from scratch unless explicitly required by the feedback.
+    """
+
+    return f"""
+You are an expert Cambridge English exam designer.
+
+Level: {level}
+
+Here is the CURRENT generated exam (JSON):
+{original_snapshot}
+
+Teacher requested changes:
+{teacher_feedback}
+
+Refinement rules:
+- You MUST keep the same exercise types unless the teacher explicitly asks to change them.
+- You MUST preserve the general structure of the exam.
+- Modify only what is necessary to satisfy the teacher feedback.
+- Do NOT remove exercises unless explicitly requested.
+- Do NOT add new exercise types unless explicitly requested.
+- Difficulty must strictly match the Cambridge level.
+- All content must remain original and in English.
+- Keep the output consistent and pedagogically valid.
+- Output STRICT JSON.
+- Do NOT include explanations outside JSON.
+
+Required JSON schema (must be identical):
+
+{{
+  "exercises": [
+    {{
+      "exercise_type": "string",
+      "instructions": "string",
+      "items": [
+        {{
+          "question": "string",
+          "answer": "string"
+        }}
+      ]
+    }}
+  ]
+}}
+"""
+
 
 def generate_exam_from_llm(prompt: str) -> str:
     """
