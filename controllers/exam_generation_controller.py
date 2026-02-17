@@ -35,6 +35,8 @@ import io
 from utils.types_enum import ExamStatus
 from flask_jwt_extended import get_jwt_identity, jwt_required
 from orm_models import User
+from sqlalchemy.orm import joinedload
+from sqlalchemy import or_
 
 
 def extract_json(text: str) -> str:
@@ -567,26 +569,75 @@ def delete_exam(exam_id: int):
         db.session.rollback()
         return jsonify({"message": {f"Something went wrong: {err}"}}), 500
     
+
 def get_all_exams_controller():
     try:
-        exams = Exam.query.filter_by(date_deleted=None).all()
+        current_user_id = get_jwt_identity()
 
+        exams = (
+            Exam.query
+            .options(
+                joinedload(Exam.class_exam),   # type: ignore
+                joinedload(Exam.user_exam)     # type: ignore
+            )
+            .filter(
+                Exam.date_deleted.is_(None),
+                Exam.status != "Accepted",
+                Exam.status != "Generating",
+                or_(
+                    Exam.coordinator_id.is_(None),   
+                    Exam.coordinator_id == current_user_id 
+                )
+            )
+            .all()
+        )
 
         result = []
         for exam in exams:
             result.append({
                 "id": exam.id,
-                "status": exam.status.value if hasattr(exam.status, "value") else exam.status,
+                "status": exam.status,
                 "context": exam.context,
                 "class_id": exam.class_id,
-                "generated_exercises": [],
+                "class_description": exam.class_exam.description if exam.class_exam else None,
                 "user_id": exam.user_id,
+                "teacher_full_name": (
+                    f"{exam.user_exam.name} {exam.user_exam.surname}"
+                    if exam.user_exam else None
+                ),
+                "generated_exercises": [],
                 "date_created": exam.date_created
             })
 
-
         return jsonify(result), 200
 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+
+def send_exam_to_review(exam_id: int):
+    try:
+        current_user_id = get_jwt_identity()
+
+        exam = Exam.query.get(exam_id)
+        if not exam or exam.date_deleted is not None:
+            return jsonify({"error": "Exam not found"}), 404
+
+        # Solo permitir si está en Pending Review
+        if exam.status != "Pending Review":
+            return jsonify({"error": "Exam is not Pending Review"}), 400
+
+        # Si ya lo tiene otro coordinator, bloquear
+        if exam.coordinator_id is not None and exam.coordinator_id != current_user_id:
+            return jsonify({"error": "Exam already assigned to another coordinator"}), 409
+
+        exam.coordinator_id = current_user_id
+        exam.status = "On Review"
+
+        db.session.commit()
+
+        return jsonify({"message": "Assigned and moved to On Review"}), 200
 
     except Exception as e:
+        db.session.rollback()
         return jsonify({"error": str(e)}), 500
