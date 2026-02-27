@@ -273,15 +273,10 @@ def get_all_users(user_type: str):
     return jsonify([serialize_user(user) for user in users]), 200
 
 
+
 def update_user(user_id: int):
-    """Update an existing user’s mutable fields.
+    """Update an existing user’s mutable fields."""
 
-    Args:
-        user_id: Primary key of the user to update.
-
-    Returns:
-        JSON response with updated user data or an error message.
-    """
     user = User.query.get(user_id)
     if not user or user.date_deleted is not None:
         return jsonify({"message": "User not found."}), 404
@@ -290,7 +285,6 @@ def update_user(user_id: int):
     if not data:
         return jsonify({"message": "Invalid JSON body."}), 400
 
-    # Allowed fields for update (email/type excluded intentionally).
     updatable_fields = [
         "name",
         "surname",
@@ -300,7 +294,33 @@ def update_user(user_id: int):
         "student_class_id",
     ]
 
-    # Apply updates dynamically.
+    # 🔹 VALIDACIÓN DE CUPO SI CAMBIA student_class_id
+    if "student_class_id" in data:
+        new_class_id = data["student_class_id"]
+
+        if new_class_id is not None:
+            clazz = Class.query.get(new_class_id)
+
+            if not clazz or clazz.date_deleted is not None:
+                return jsonify({"message": "Class not found."}), 404
+
+            # Si ya está en esa clase, no validar cupo
+            if user.student_class_id != new_class_id:
+
+                current_students = (
+                    db.session.query(func.count(User.id))  # pylint: disable=not-callable
+                    .filter(
+                        User.student_class_id == clazz.id,
+                        User.date_deleted.is_(None),
+                    )
+                    .scalar()
+                )
+
+                if current_students >= clazz.max_capacity:
+                    return jsonify({
+                        "message": "Class is full. No spots available."
+                    }), 409
+
     for field in updatable_fields:
         if field in data:
             setattr(user, field, data[field])
@@ -315,7 +335,8 @@ def update_user(user_id: int):
     except SQLAlchemyError as err:
         db.session.rollback()
         return jsonify({"message": f"Database error: {err}"}), 400
-    except Exception as err:  # pylint: disable=broad-except
+
+    except Exception as err:
         db.session.rollback()
         return jsonify({"message": f"Unexpected error: {err}"}), 500
 
@@ -332,6 +353,7 @@ def delete_user(user_id: int):
         return jsonify({"message": "User not found or already deleted."}), 404
 
     try:
+        user.is_verified = 0
         user.date_deleted = datetime.now()
         db.session.commit()
 

@@ -13,7 +13,7 @@ from controllers.exam_controller import (
     update_exam as controller_update_exam,
     delete_exam as controller_delete_exam,
 )
-from controllers.exam_generation_controller import generate_exam, get_full_exam, export_exam_pdf, export_exam_docx, refine_exam, get_all_exams_controller, send_exam_to_review, leave_exam_review, accept_exam
+from controllers.exam_generation_controller import generate_exam, get_full_exam, export_exam_pdf, export_exam_docx, refine_exam, get_all_exams_controller, send_exam_to_review, leave_exam_review, accept_exam, send_to_correction
 from utils.types_enum import ExamStatus
 
 exam_bp = Blueprint("exam_bp", __name__)
@@ -246,3 +246,8 @@ def leave_review_route(exam_id: int):
 @jwt_required()
 def accept_exam_route(exam_id: int):
     return accept_exam(exam_id)
+
+@exam_bp.route("/api/exam/<int:exam_id>/send-to-correction", methods=["PATCH"])
+@jwt_required()
+def send_to_correction_route(exam_id: int):
+    return send_to_correction(exam_id)

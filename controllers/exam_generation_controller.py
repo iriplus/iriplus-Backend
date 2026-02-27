@@ -719,3 +719,16 @@ def accept_exam(exam_id: int):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+    
+
+def send_to_correction(exam_id: int):
+    exam = Exam.query.get(exam_id)
+    if not exam:
+        return jsonify({"message": "Exam not found"}), 404
+
+    data = request.get_json()
+    exam.status = "Pending Correction"
+    exam.notes = data.get("notes")
+
+    db.session.commit()
+    return jsonify({"message": "Exam sent to correction"}), 200
