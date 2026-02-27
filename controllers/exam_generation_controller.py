@@ -325,27 +325,62 @@ def refine_exam(exam_id: int):
         db.session.rollback()
         return jsonify({"message": str(err)}), 500
 
-
 def get_full_exam(exam_id: int):
     """
     Return a fully reconstructed exam ready for frontend rendering.
     """
 
     try:
-        exam = Exam.query.get(exam_id)
-        if not exam or exam.date_deleted:
+        exam = (
+            Exam.query
+            .options(
+                joinedload(Exam.class_exam), # type: ignore
+                joinedload(Exam.user_exam),          # teacher # type: ignore
+                joinedload(Exam.coordinator_exam),  # coordinator # type: ignore
+                joinedload(Exam.generated_exercises) # type: ignore
+            )
+            .filter(
+                Exam.id == exam_id,
+                Exam.date_deleted.is_(None)
+            )
+            .first()
+        )
+
+        if not exam:
             return jsonify({"message": "Exam not found"}), 404
 
         result = {
             "id": exam.id,
             "status": exam.status,
-            "class_id": exam.class_id,
             "context": exam.context,
+            "notes": exam.notes,
+            "date_created": exam.date_created,
+
+            # Clase
+            "class_id": exam.class_id,
+            "class_description": (
+                exam.class_exam.description
+                if exam.class_exam else None
+            ),
+
+            # Profesora
+            "teacher_full_name": (
+                f"{exam.user_exam.name} {exam.user_exam.surname}"
+                if exam.user_exam else None
+            ),
+
+            # Coordinadora
+            "coordinator_id":exam.coordinator_id,
+            "coordinator_full_name": (
+                f"{exam.coordinator_exam.name} {exam.coordinator_exam.surname}"
+                if exam.coordinator_exam else None
+            ),
+
             "exercises": []
         }
 
         for instance in exam.generated_exercises:
-            exercise_type = Exercise.query.get(instance.exercise_type_id)
+            exercise_type = instance.exercise_type
 
             result["exercises"].append({
                 "exercise_type": exercise_type.name if exercise_type else None,
@@ -355,7 +390,7 @@ def get_full_exam(exam_id: int):
 
         return jsonify(result), 200
 
-    except Exception as err:  # pylint: disable=broad-except
+    except Exception as err:
         return jsonify({"message": f"Unexpected error: {err}"}), 500
 
 def build_exam_html(exam: Exam) -> str:
@@ -606,7 +641,8 @@ def get_all_exams_controller():
                     if exam.user_exam else None
                 ),
                 "generated_exercises": [],
-                "date_created": exam.date_created
+                "date_created": exam.date_created,
+                "coordinator_id":exam.coordinator_id
             })
 
         return jsonify(result), 200
@@ -614,7 +650,6 @@ def get_all_exams_controller():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
-
 def send_exam_to_review(exam_id: int):
     try:
         current_user_id = get_jwt_identity()
@@ -623,20 +658,63 @@ def send_exam_to_review(exam_id: int):
         if not exam or exam.date_deleted is not None:
             return jsonify({"error": "Exam not found"}), 404
 
-        # Solo permitir si está en Pending Review
-        if exam.status != "Pending Review":
-            return jsonify({"error": "Exam is not Pending Review"}), 400
-
-        # Si ya lo tiene otro coordinator, bloquear
+        # Si lo tiene otra coordinadora → conflicto
         if exam.coordinator_id is not None and exam.coordinator_id != current_user_id:
             return jsonify({"error": "Exam already assigned to another coordinator"}), 409
 
+        # Si es la misma coordinadora (o no tiene), simplemente pasar a On Review
         exam.coordinator_id = current_user_id
         exam.status = "On Review"
 
         db.session.commit()
 
         return jsonify({"message": "Assigned and moved to On Review"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+def leave_exam_review(exam_id: int):
+    try:
+        exam = Exam.query.get(exam_id)
+
+        if not exam or exam.date_deleted is not None:
+            return jsonify({"error": "Exam not found"}), 404
+
+        # Solo permitir si está en revisión
+        if exam.status != "On Review":
+            return jsonify({"error": "Exam is not currently On Review"}), 400
+
+        # Cambiar únicamente el estado
+        exam.status = "Pending Review"
+        db.session.commit()
+
+        return jsonify({"message": "Exam moved back to Pending Review"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+    
+def accept_exam(exam_id: int):
+    try:
+        current_user_id = int(get_jwt_identity())  # ← clave
+
+        exam = Exam.query.get(exam_id)
+        if not exam or exam.date_deleted is not None:
+            return jsonify({"error": "Exam not found"}), 404
+        
+        print("ACCEPT DEBUG coordinator_id:", exam.coordinator_id, type(exam.coordinator_id))
+        print("ACCEPT DEBUG current_user_id:", current_user_id, type(current_user_id))
+
+        # Solo la coordinadora asignada puede aceptar
+        if exam.coordinator_id != current_user_id:
+            return jsonify({"error": "Not authorized"}), 403
+
+        exam.status = "Accepted"
+        db.session.commit()
+
+        return jsonify({"message": "Exam accepted"}), 200
 
     except Exception as e:
         db.session.rollback()
