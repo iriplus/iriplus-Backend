@@ -652,7 +652,7 @@ def get_all_exams_controller():
     
 def send_exam_to_review(exam_id: int):
     try:
-        current_user_id = get_jwt_identity()
+        current_user_id = int(get_jwt_identity())
 
         exam = Exam.query.get(exam_id)
         if not exam or exam.date_deleted is not None:
@@ -662,13 +662,15 @@ def send_exam_to_review(exam_id: int):
         if exam.coordinator_id is not None and exam.coordinator_id != current_user_id:
             return jsonify({"error": "Exam already assigned to another coordinator"}), 409
 
-        # Si es la misma coordinadora (o no tiene), simplemente pasar a On Review
-        exam.coordinator_id = current_user_id
-        exam.status = "On Review"
+        # Si no tiene coordinadora, asignar; si ya soy yo, mantener
+        if exam.coordinator_id is None:
+            exam.coordinator_id = current_user_id
 
+        # Pasar a On Review siempre (reanudar)
+        exam.status = "On Review"
         db.session.commit()
 
-        return jsonify({"message": "Assigned and moved to On Review"}), 200
+        return jsonify({"message": "Moved to On Review"}), 200
 
     except Exception as e:
         db.session.rollback()
