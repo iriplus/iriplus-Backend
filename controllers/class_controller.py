@@ -233,3 +233,35 @@ def delete_class(class_id: int):
     except Exception as err:  # pylint: disable=broad-except
         db.session.rollback()
         return jsonify({"message": {f"Something went wrong: {err}"}}), 500
+
+def validate_class_code(class_code: str):
+    """Validate class code and check availability."""
+
+    try:
+        normalized = class_code.strip().upper()
+
+        clazz = (
+            Class.query
+            .filter(func.trim(Class.class_code) == normalized)
+            .filter(Class.date_deleted.is_(None))
+            .first()
+        )
+
+        if not clazz:
+            return jsonify({"message": "Class not found"}), 404
+
+        # Count only active & verified students
+        active_students = [
+            student for student in clazz.students
+            if not student.date_deleted and student.is_verified
+        ]
+
+        if len(active_students) >= clazz.max_capacity:
+            return jsonify({"message": "Class is full"}), 409
+
+        return jsonify(_serialize_class(clazz)), 200
+
+    except SQLAlchemyError as err:
+        return jsonify({"message": f"Database error: {err}"}), 500
+    except Exception as err:
+        return jsonify({"message": f"Something went wrong: {err}"}), 500

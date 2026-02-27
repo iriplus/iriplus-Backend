@@ -5,7 +5,7 @@ Each route delegates its logic to the corresponding controller function.
 """
 
 from flask import Blueprint, jsonify
-from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
+from flask_jwt_extended import jwt_required, verify_jwt_in_request, get_jwt_identity
 from orm_models import db, User
 from controllers.class_controller import (
     create_class as controller_create_class,
@@ -14,6 +14,7 @@ from controllers.class_controller import (
     update_class as controller_update_class,
     delete_class as controller_delete_class,
     get_class_by_class_code as controller_get_class_by_class_code,
+    validate_class_code as controller_validate_class_code
 )
 from utils.types_enum import UserType
 from utils.decorators import roles_required
@@ -188,3 +189,8 @@ def delete_class(class_id: int):
         description: Server error
     """
     return controller_delete_class(class_id)
+
+@class_bp.route("/api/class/validate-code/<string:class_code>", methods=["GET"])
+@jwt_required()
+def validate_class_code(class_code: str):
+    return controller_validate_class_code(class_code)
