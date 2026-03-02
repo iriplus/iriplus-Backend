@@ -235,19 +235,43 @@ def delete_exam_route(exam_id: int):
 @exam_bp.route("/api/exam/<int:exam_id>/send-to-review", methods=["PATCH"])
 @jwt_required()
 def send_to_review_route(exam_id: int):
+    """
+    Docstring for send_to_review_route
+    
+    :param exam_id: Description
+    :type exam_id: int
+    """
     return send_exam_to_review(exam_id)
 
 @exam_bp.route("/api/exam/<int:exam_id>/leave-review", methods=["PATCH"])
 @jwt_required()
 def leave_review_route(exam_id: int):
+    """
+    Docstring for leave_review_route
+    
+    :param exam_id: Description
+    :type exam_id: int
+    """
     return leave_exam_review(exam_id)
 
 @exam_bp.route("/api/exam/<int:exam_id>/accept", methods=["PATCH"])
 @jwt_required()
 def accept_exam_route(exam_id: int):
+    """
+    Docstring for accept_exam_route
+    
+    :param exam_id: Description
+    :type exam_id: int
+    """
     return accept_exam(exam_id)
 
 @exam_bp.route("/api/exam/<int:exam_id>/send-to-correction", methods=["PATCH"])
 @jwt_required()
 def send_to_correction_route(exam_id: int):
+    """
+    Docstring for send_to_correction_route
+    
+    :param exam_id: Description
+    :type exam_id: int
+    """
     return send_to_correction(exam_id)
