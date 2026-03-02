@@ -117,6 +117,7 @@ def generate_exam():
             status=ExamStatus.GENERATING.value,
             class_id=class_id,
             context=context,
+            user_id=user_id
         )
 
         for ex in exercise_types:
@@ -241,7 +242,6 @@ def refine_exam(exam_id: int):
         return jsonify({"message": "Exam not found"}), 404
 
     print(exam.status)
-    print(ExamStatus.GENERATING.value)
     print(exam.user_id)
     print(get_jwt_identity())
     if int(exam.user_id) != int(get_jwt_identity()):
