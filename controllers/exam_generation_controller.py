@@ -17,10 +17,10 @@ import datetime
 from typing import cast, List
 import io
 from flask import request, jsonify, send_file
+from flask_jwt_extended import get_jwt_identity, jwt_required
 from sqlalchemy.exc import SQLAlchemyError
-from orm_models import db, Exam, Class, Exercise, ExamExerciseInstance
-from services.rag_service import retrieve_course_context
-from services.llm_service import build_prompt, generate_exam_from_llm, build_refinement_prompt
+from sqlalchemy.orm import joinedload
+from sqlalchemy import or_
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
 from reportlab.platypus import ListFlowable, ListItem
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -30,13 +30,10 @@ from reportlab.platypus import KeepTogether
 from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from flask import send_file
-import io
+from orm_models import db, Exam, Class, Exercise, ExamExerciseInstance, User
+from services.rag_service import retrieve_course_context
+from services.llm_service import build_prompt, generate_exam_from_llm, build_refinement_prompt
 from utils.types_enum import ExamStatus
-from flask_jwt_extended import get_jwt_identity, jwt_required
-from orm_models import User
-from sqlalchemy.orm import joinedload
-from sqlalchemy import or_
 
 
 def extract_json(text: str) -> str:
@@ -603,9 +600,11 @@ def delete_exam(exam_id: int):
     except Exception as err:  # pylint: disable=broad-except
         db.session.rollback()
         return jsonify({"message": {f"Something went wrong: {err}"}}), 500
-    
 
 def get_all_exams_controller():
+    """
+    Docstring for get_all_exams_controller
+    """
     try:
         current_user_id = get_jwt_identity()
 
@@ -620,8 +619,8 @@ def get_all_exams_controller():
                 Exam.status != "Accepted",
                 Exam.status != "Generating",
                 or_(
-                    Exam.coordinator_id.is_(None),   
-                    Exam.coordinator_id == current_user_id 
+                    Exam.coordinator_id.is_(None),
+                    Exam.coordinator_id == current_user_id
                 )
             )
             .all()
@@ -649,8 +648,98 @@ def get_all_exams_controller():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
+
+@jwt_required()
+def get_teacher_exams_controller():
+    """
+    Docstring for get_teacher_exams_controller
+    """
+    try:
+        current_user_id = int(get_jwt_identity())
+        exams = (
+            Exam.query
+            .options(
+                joinedload(Exam.class_exam),         # type: ignore
+                joinedload(Exam.coordinator_exam)    # type: ignore
+            )
+            .filter(
+                Exam.date_deleted.is_(None),
+                Exam.user_id == current_user_id,
+                Exam.status != "Generating"
+            )
+            .all()
+        )
+
+        result = []
+        for exam in exams:
+            result.append({
+                "id": exam.id,
+                "status": exam.status,
+                "context": exam.context,
+                "class_id": exam.class_id,
+                "class_description": (
+                    exam.class_exam.description if exam.class_exam else None
+                ),
+                "user_id": exam.user_id,
+                "date_created": exam.date_created,
+                "coordinator_id": exam.coordinator_id,
+                "coordinator_full_name": (
+                    f"{exam.coordinator_exam.name} {exam.coordinator_exam.surname}"
+                    if exam.coordinator_exam else None
+                )
+            })
+        return jsonify(result), 200
+
+    except Exception as err:  # pylint: disable=broad-except
+        print(err)
+        return jsonify({"error": str(err)}), 500
+
+@jwt_required()
+def get_student_exams_controller():
+    """
+    Docstring for get_student_exams_controller
+    """
+    try:
+        current_user_id = int(get_jwt_identity())
+
+        exams = (
+            Exam.query
+            .options(
+                joinedload(Exam.class_exam)  # type: ignore
+            )
+            .filter(
+                Exam.date_deleted.is_(None),
+                Exam.user_id == current_user_id,
+                Exam.status != "Generating"
+            )
+            .all()
+        )
+
+        result = []
+        for exam in exams:
+            result.append({
+                "id": exam.id,
+                "status": exam.status,
+                "context": exam.context,
+                "class_id": exam.class_id,
+                "class_description": (
+                    exam.class_exam.description if exam.class_exam else None
+                ),
+                "user_id": exam.user_id,
+                "date_created": exam.date_created,
+                "score": exam.score,
+                "exp_gained": exam.exp_gained
+            })
+
+        return jsonify(result), 200
+
+    except Exception as err:  # pylint: disable=broad-except
+        return jsonify({"error": str(err)}), 500
+
 def send_exam_to_review(exam_id: int):
+    """
+    Docstring for send_exam_to_review
+    """
     try:
         current_user_id = int(get_jwt_identity())
 
@@ -678,6 +767,9 @@ def send_exam_to_review(exam_id: int):
 
 
 def leave_exam_review(exam_id: int):
+    """
+    Docstring for leave_exam_review
+    """
     try:
         exam = Exam.query.get(exam_id)
 
@@ -697,15 +789,18 @@ def leave_exam_review(exam_id: int):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
-    
+
 def accept_exam(exam_id: int):
+    """
+    Docstring for accept_exam
+    """
     try:
         current_user_id = int(get_jwt_identity())  # ← clave
 
         exam = Exam.query.get(exam_id)
         if not exam or exam.date_deleted is not None:
             return jsonify({"error": "Exam not found"}), 404
-        
+
         print("ACCEPT DEBUG coordinator_id:", exam.coordinator_id, type(exam.coordinator_id))
         print("ACCEPT DEBUG current_user_id:", current_user_id, type(current_user_id))
 
@@ -721,9 +816,12 @@ def accept_exam(exam_id: int):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
-    
+
 
 def send_to_correction(exam_id: int):
+    """
+    Docstring for send_to_correction
+    """
     exam = Exam.query.get(exam_id)
     if not exam:
         return jsonify({"message": "Exam not found"}), 404

@@ -13,7 +13,20 @@ from controllers.exam_controller import (
     update_exam as controller_update_exam,
     delete_exam as controller_delete_exam,
 )
-from controllers.exam_generation_controller import generate_exam, get_full_exam, export_exam_pdf, export_exam_docx, refine_exam, get_all_exams_controller, send_exam_to_review, leave_exam_review, accept_exam, send_to_correction
+from controllers.exam_generation_controller import (
+    generate_exam,
+    get_full_exam,
+    export_exam_pdf,
+    export_exam_docx,
+    refine_exam,
+    get_all_exams_controller,
+    get_teacher_exams_controller,
+    get_student_exams_controller,
+    send_exam_to_review,
+    leave_exam_review,
+    accept_exam,
+    send_to_correction,
+)
 from utils.types_enum import ExamStatus
 
 exam_bp = Blueprint("exam_bp", __name__)
@@ -74,6 +87,54 @@ def get_all_exams():
     """
     return get_all_exams_controller()
 
+@exam_bp.route("/api/exam/teacher", methods=["GET"])
+@jwt_required()
+def get_teacher_exams():
+    """
+    List exams for the authenticated teacher.
+    ---
+    tags:
+      - Exam
+    summary: List teacher exams
+    description: Retrieve all non-deleted exams that belong to the authenticated teacher.
+    responses:
+      200:
+        description: OK
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Exam'
+      500:
+        description: Server error
+    """
+    return get_teacher_exams_controller()
+
+
+@exam_bp.route("/api/exam/student", methods=["GET"])
+@jwt_required()
+def get_student_exams():
+    """
+    List exams for the authenticated student.
+    ---
+    tags:
+      - Exam
+    summary: List student exams
+    description: Retrieve all non-deleted exams that belong to the authenticated student.
+    responses:
+      200:
+        description: OK
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Exam'
+      500:
+        description: Server error
+    """
+    return get_student_exams_controller()
 
 @exam_bp.route("/api/exam/<int:exam_id>", methods=["GET"])
 @jwt_required()
