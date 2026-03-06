@@ -4,11 +4,15 @@ This module defines the CRUD operations for User entities.
 It provides endpoints for creating, retrieving, updating, and deleting users,
 including type-specific filtering for Students, Teachers, and Coordinators.
 """
+from __future__ import annotations
 from datetime import datetime
+from typing import List, Set
 import bcrypt
 from flask import request, jsonify
+from flask_jwt_extended import get_jwt_identity
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import joinedload
 from orm_models import db, User, Class
 from utils.types_enum import UserType
 from utils.email_utils import send_welcome_email
@@ -28,7 +32,7 @@ def serialize_user(user: User) -> dict:
     Returns:
         A dictionary containing serializable user attributes.
     """
-    return {
+    payload = {
         "id": user.id,
         "name": user.name,
         "surname": user.surname,
@@ -42,6 +46,9 @@ def serialize_user(user: User) -> dict:
         "is_verified": user.is_verified,
         "date_created": user.date_created.isoformat() if user.date_created else None,
     }
+
+    if user.type == UserType.STUDENT:
+        payload["student_class"] = {
 
 # ---------------------------------------------------------------------------
 # Controller functions
@@ -272,7 +279,42 @@ def get_all_users(user_type: str):
 
     return jsonify([serialize_user(user) for user in users]), 200
 
+def get_my_students():
+    """Retrieve all Students assigned to the requesting Teacher (Teacher only).
 
+    Returns:
+        A JSON list of students (possibly empty).
+    """
+    teacher_id = int(get_jwt_identity())
+    teacher = User.query.get(teacher_id)
+
+    if not teacher or teacher.date_deleted is not None:
+        return jsonify({"message": "User not found."}), 404
+
+    if teacher.type != UserType.TEACHER:
+        return jsonify({"message": "Forbidden"}), 403
+
+    teacher_classes = getattr(teacher, "teacher_classes", None) or []
+    class_ids: Set[int] = {c.id for c in teacher_classes if getattr(c, "date_deleted", None) is None}
+
+    if not class_ids:
+        return jsonify([]), 200
+
+    students: List[User] = (
+        User.query
+        .filter(
+            User.type == UserType.STUDENT,
+            User.date_deleted.is_(None),
+            User.student_class_id.in_(class_ids),
+        )
+        .options(
+            joinedload(User.student_class_id),
+            joinedload(User.student_level_id),
+        )
+        .all()
+    )
+
+    return jsonify([serialize_user(s) for s in students]), 200
 
 def update_user(user_id: int):
     """Update an existing user’s mutable fields."""

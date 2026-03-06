@@ -14,6 +14,7 @@ from controllers.user_controller import (
     get_all_users as controller_get_all_users,
     get_user_by_email as controller_get_user_by_email,
     get_user_by_dni as controller_get_user_by_dni,
+    get_my_students as controller_get_my_students
 )
 from utils.types_enum import UserType
 from utils.decorators import roles_required, self_or_coordinator
@@ -267,6 +268,25 @@ def get_all_coordinators():
     """
     return controller_get_all_users("Coordinator")
 
+@user_bp.route("/api/user/student/my", methods=["GET"])
+@roles_required(UserType.TEACHER)
+def get_my_students():
+    """
+    List all Student users assigned to the requesting Teacher (Teacher only).
+    ---
+    tags:
+      - User
+    summary: List my Students
+    description: Retrieve all Students assigned to the requesting Teacher.
+    responses:
+      200:
+        description: OK
+      403:
+        description: Forbidden
+      500:
+        description: Server error
+    """
+    return controller_get_my_students()
 
 @user_bp.route("/api/user/<int:user_id>", methods=["PUT"])
 @self_or_coordinator()
