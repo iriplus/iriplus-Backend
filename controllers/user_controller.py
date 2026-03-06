@@ -48,7 +48,44 @@ def serialize_user(user: User) -> dict:
     }
 
     if user.type == UserType.STUDENT:
-        payload["student_class"] = {
+        clazz = user.student_class
+        level = user.student_level
+
+        payload["class_code"] = clazz.class_code if clazz else None
+
+        payload["student_class"] = (
+            {
+                "id": clazz.id,
+                "class_code": clazz.class_code,
+                "description": clazz.description,
+            }
+            if clazz
+            else None
+        )
+
+        payload["student_level"] = (
+            {
+                "id": level.id,
+                "description": level.description,
+                "min_xp": level.min_xp,
+            }
+            if level
+            else None
+        )
+
+    if user.type == UserType.TEACHER:
+        classes = [c for c in (user.teacher_classes or []) if c.date_deleted is None] # type: ignore[operator]
+        payload["teacher_classes"] = [
+            {
+                "id": c.id,
+                "class_code": c.class_code,
+                "description": c.description,
+                "suggested_level": c.suggested_level,
+                "max_capacity": c.max_capacity,
+            }
+            for c in classes
+        ]
+    return payload
 
 # ---------------------------------------------------------------------------
 # Controller functions
@@ -308,8 +345,8 @@ def get_my_students():
             User.student_class_id.in_(class_ids),
         )
         .options(
-            joinedload(User.student_class_id),
-            joinedload(User.student_level_id),
+            joinedload(User.student_class), # type: ignore[arg-type]
+            joinedload(User.student_level) # type: ignore[arg-type]
         )
         .all()
     )
