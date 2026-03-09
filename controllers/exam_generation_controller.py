@@ -702,11 +702,11 @@ def get_student_exams_controller():
     """
     try:
         current_user_id = int(get_jwt_identity())
-
         exams = (
             Exam.query
             .options(
-                joinedload(Exam.class_exam)  # type: ignore
+                joinedload(Exam.class_exam),         # type: ignore
+                joinedload(Exam.coordinator_exam)    # type: ignore
             )
             .filter(
                 Exam.date_deleted.is_(None),
@@ -728,13 +728,16 @@ def get_student_exams_controller():
                 ),
                 "user_id": exam.user_id,
                 "date_created": exam.date_created,
-                "score": exam.score,
-                "exp_gained": exam.exp_gained
+                "coordinator_id": exam.coordinator_id,
+                "coordinator_full_name": (
+                    f"{exam.coordinator_exam.name} {exam.coordinator_exam.surname}"
+                    if exam.coordinator_exam else None
+                )
             })
-
         return jsonify(result), 200
 
     except Exception as err:  # pylint: disable=broad-except
+        print(err)
         return jsonify({"error": str(err)}), 500
 
 def send_exam_to_review(exam_id: int):
@@ -861,7 +864,6 @@ def submit_correction(exam_id: int):
 
         if not data:
             return jsonify({"message": "Invalid JSON body"}), 400
-        
         print("Data", data)
 
         edited_context = data.get("context")
@@ -884,7 +886,6 @@ def submit_correction(exam_id: int):
 
         if not exam:
             return jsonify({"message": "Exam not found"}), 404
-        
         print("Exam data", exam, exam.user_id, exam.status)
 
         if int(exam.user_id) != current_user_id:
@@ -901,13 +902,10 @@ def submit_correction(exam_id: int):
         if not current_instances:
             return jsonify({"message": "Exam has no generated exercises"}), 400
 
-        
-
         if len(edited_exercises) != len(current_instances):
             return jsonify({
                 "message": "You cannot change the number of exercise blocks"
             }), 400
-    
         instances_by_type = {}
         for instance in current_instances:
             if not instance.exercise_type or not instance.exercise_type.name:
