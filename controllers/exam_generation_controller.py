@@ -361,6 +361,7 @@ def get_full_exam(exam_id: int):
             ),
 
             # Profesora
+            "teacher_id": exam.user_id,
             "teacher_full_name": (
                 f"{exam.user_exam.name} {exam.user_exam.surname}"
                 if exam.user_exam else None
@@ -832,3 +833,179 @@ def send_to_correction(exam_id: int):
 
     db.session.commit()
     return jsonify({"message": "Exam sent to correction"}), 200
+
+@jwt_required()
+def submit_correction(exam_id: int):
+    """
+    Persist manual teacher corrections and move the exam back to Pending Review.
+
+    Expected payload:
+    {
+        "context": "updated context",
+        "exercises": [
+            {
+                "exercise_type": "Word Formation",
+                "items": [
+                    {
+                        "question": "Updated question",
+                        "answer": "Updated answer"
+                    }
+                ]
+            }
+        ]
+    }
+    """
+    try:
+        current_user_id = int(get_jwt_identity())
+        data = request.get_json(silent=True)
+
+        if not data:
+            return jsonify({"message": "Invalid JSON body"}), 400
+        
+        print("Data", data)
+
+        edited_context = data.get("context")
+        edited_exercises = data.get("exercises")
+
+        if not isinstance(edited_context, str) or not edited_context.strip():
+            return jsonify({"message": "Context is required"}), 400
+
+        if not isinstance(edited_exercises, list) or not edited_exercises:
+            return jsonify({"message": "Exercises must be a non-empty list"}), 400
+
+        exam = (
+            Exam.query
+            .filter(
+                Exam.id == exam_id,
+                Exam.date_deleted.is_(None)
+            )
+            .first()
+        )
+
+        if not exam:
+            return jsonify({"message": "Exam not found"}), 404
+        
+        print("Exam data", exam, exam.user_id, exam.status)
+
+        if int(exam.user_id) != current_user_id:
+            return jsonify({"message": "Unauthorized"}), 403
+
+        if exam.status != ExamStatus.PENDING_CORRECTION.value:
+            return jsonify({
+                "message": "Exam is not editable in current state"
+            }), 400
+
+        current_instances = cast(List[ExamExerciseInstance], exam.generated_exercises)
+
+        print("Current", current_instances)
+        if not current_instances:
+            return jsonify({"message": "Exam has no generated exercises"}), 400
+
+        
+
+        if len(edited_exercises) != len(current_instances):
+            return jsonify({
+                "message": "You cannot change the number of exercise blocks"
+            }), 400
+    
+        instances_by_type = {}
+        for instance in current_instances:
+            if not instance.exercise_type or not instance.exercise_type.name:
+                return jsonify({"message": "Exam contains invalid exercise metadata"}), 500
+
+            exercise_key = instance.exercise_type.name.strip().lower()
+
+            if exercise_key in instances_by_type:
+                return jsonify({
+                    "message": "Duplicated exercise types are not supported"
+                }), 400
+
+            instances_by_type[exercise_key] = instance
+
+        received_types = set()
+
+        for exercise_block in edited_exercises:
+            exercise_type_name = exercise_block.get("exercise_type")
+            edited_items = exercise_block.get("items")
+
+            if not isinstance(exercise_type_name, str) or not exercise_type_name.strip():
+                return jsonify({"message": "Each exercise must include exercise_type"}), 400
+
+            if not isinstance(edited_items, list):
+                return jsonify({"message": "Each exercise must include an items list"}), 400
+
+            exercise_key = exercise_type_name.strip().lower()
+
+            if exercise_key in received_types:
+                return jsonify({"message": "Duplicated exercise types in payload"}), 400
+
+            instance = instances_by_type.get(exercise_key)
+            if not instance:
+                return jsonify({
+                    "message": "You cannot change the exercise types of the exam"
+                }), 400
+
+            original_items = json.loads(instance.content_json)
+
+            if len(edited_items) != len(original_items):
+                return jsonify({
+                    "message": (
+                        f"You cannot change the number of items for "
+                        f"'{exercise_type_name}'"
+                    )
+                }), 400
+
+            updated_items = []
+            updated_answers = []
+
+            for index, (edited_item, original_item) in enumerate(
+                zip(edited_items, original_items),
+                start=1
+            ):
+                question = edited_item.get("question")
+                answer = edited_item.get("answer")
+
+                if not isinstance(question, str) or not question.strip():
+                    return jsonify({
+                        "message": (
+                            f"Question {index} in '{exercise_type_name}' is required"
+                        )
+                    }), 400
+
+                if not isinstance(answer, str) or not answer.strip():
+                    return jsonify({
+                        "message": (
+                            f"Answer {index} in '{exercise_type_name}' is required"
+                        )
+                    }), 400
+
+                updated_item = dict(original_item)
+                updated_item["question"] = question.strip()
+                updated_item["answer"] = answer.strip()
+
+                updated_items.append(updated_item)
+                updated_answers.append(answer.strip())
+
+            instance.content_json = json.dumps(updated_items)
+            instance.answer_key_json = json.dumps({
+                "answers": updated_answers
+            })
+
+            received_types.add(exercise_key)
+
+        exam.context = edited_context.strip()
+        exam.status = ExamStatus.PENDING_REVIEW.value
+
+        db.session.commit()
+
+        return jsonify({
+            "message": "Exam corrected and sent back to review"
+        }), 200
+
+    except SQLAlchemyError as err:
+        db.session.rollback()
+        return jsonify({"message": f"Database error: {err}"}), 500
+
+    except Exception as err:  # pylint: disable=broad-except
+        db.session.rollback()
+        return jsonify({"message": f"Unexpected error: {err}"}), 500
