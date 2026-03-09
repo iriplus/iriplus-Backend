@@ -26,6 +26,7 @@ from controllers.exam_generation_controller import (
     leave_exam_review,
     accept_exam,
     send_to_correction,
+    generate_student_exam
 )
 from utils.types_enum import ExamStatus
 
@@ -236,6 +237,14 @@ def generate_exam_route():
     Docstring for generate_exam_route
     """
     return generate_exam()
+
+@exam_bp.route("/api/exam/generate_student", methods=["POST"])
+@jwt_required()
+def generate_student_exam_route():
+    """
+    Docstring for generate_exam_route
+    """
+    return generate_student_exam()
 
 @exam_bp.route("/api/exam/<int:exam_id>/full", methods=["GET"])
 @jwt_required()

@@ -32,7 +32,8 @@ from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from orm_models import db, Exam, Class, Exercise, ExamExerciseInstance, User
 from services.rag_service import retrieve_course_context
-from services.llm_service import build_prompt, generate_exam_from_llm, build_refinement_prompt
+from services.llm_service import build_prompt, generate_exam_from_llm, build_refinement_prompt, build_student_prompt
+from services.generic_context_service import get_random_generic_context
 from utils.types_enum import ExamStatus
 
 
@@ -832,3 +833,260 @@ def send_to_correction(exam_id: int):
 
     db.session.commit()
     return jsonify({"message": "Exam sent to correction"}), 200
+
+
+def _split_items_and_answers(items: List[dict]) -> tuple[List[dict], List[str]]:
+    """
+    Split generated items into:
+    - public items without answer
+    - answer key list
+
+    For student exams, questions are allowed to come either:
+    - with visible underscores already embedded in the question text, or
+    - without underscores, in which case the frontend can render an external input.
+    """
+
+    public_items: List[dict] = []
+    answers: List[str] = []
+
+    for item in items:
+        if not isinstance(item, dict):
+            raise ValueError("Each item returned by the model must be an object")
+
+        question = item.get("question")
+        answer = item.get("answer")
+
+        if not question or not isinstance(question, str):
+            raise ValueError(
+                "Each item returned by the model must contain a valid 'question'"
+            )
+
+        if not answer or not isinstance(answer, str):
+            raise ValueError(
+                "Each item returned by the model must contain a valid 'answer'"
+            )
+
+        clean_question = question.strip()
+        clean_answer = answer.strip()
+
+        if not clean_question:
+            raise ValueError("Question cannot be empty")
+
+        if not clean_answer:
+            raise ValueError("Answer cannot be empty")
+
+        answers.append(clean_answer)
+
+        public_item = {
+            "question": clean_question,
+            "has_blank": "_" in clean_question,
+        }
+
+        public_items.append(public_item)
+
+    return public_items, answers
+
+
+@jwt_required()
+def generate_student_exam():
+    """
+    Generate a student exam using:
+    - class level
+    - course bucket (kids/teens/adults)
+    - random generic context from filesystem
+    - RAG retrieval
+    - LLM generation
+
+    Expected JSON payload:
+    {
+        "class_id": int,
+        "exercise_type_ids": [int]
+    }
+
+    Returns:
+        201 with exam_id if successful.
+    """
+
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"message": "Invalid JSON body"}), 400
+
+    class_id = data.get("class_id")
+    exercise_type_ids = data.get("exercise_type_ids")
+    user_id = get_jwt_identity()
+    user = db.session.get(User, user_id)
+
+    if not class_id or not exercise_type_ids:
+        return jsonify({"message": "Missing required fields"}), 400
+
+    if not isinstance(exercise_type_ids, list) or not exercise_type_ids:
+        return jsonify(
+            {"message": "exercise_type_ids must be a non-empty list"}
+        ), 400
+
+    if not user:
+        return jsonify({"message": "Student not found"}), 404
+
+    try:
+        # ------------------------
+        # Validate class
+        # ------------------------
+        class_obj = db.session.get(Class, class_id)
+        if not class_obj or class_obj.date_deleted:
+            return jsonify({"message": "Class not found or deleted"}), 404
+
+        # ------------------------
+        # Validate exercise types
+        # ------------------------
+        exercise_types: List[Exercise] = []
+
+        for ex_id in exercise_type_ids:
+            exercise = db.session.get(Exercise, ex_id)
+            if not exercise or exercise.date_deleted:
+                return jsonify(
+                    {"message": f"Invalid exercise type id {ex_id}"}
+                ), 400
+            exercise_types.append(exercise)
+
+        # ------------------------
+        # Resolve generic context
+        # ------------------------
+        course_name = class_obj.description
+        level = class_obj.suggested_level
+        generic_context = get_random_generic_context(course_name)
+
+        # ------------------------
+        # Create exam (GENERATING)
+        # ------------------------
+        new_exam = Exam(
+            status=ExamStatus.GENERATING.value,
+            class_id=class_id,
+            context=generic_context,
+            user_id=user_id,
+        )
+
+        for exercise in exercise_types:
+            new_exam.exercise_types.append(exercise)
+
+        db.session.add(new_exam)
+        db.session.flush()
+
+        # ------------------------
+        # RAG phase
+        # ------------------------
+        exercise_list_text = "\n".join(
+            f"- {exercise.name}: {exercise.content_description}"
+            for exercise in exercise_types
+        )
+
+        contexts = retrieve_course_context(
+            course_id=course_name,
+            level=level,
+            exercises_description=exercise_list_text,
+        )
+
+        retrieved_context_text = "\n\n---\n\n".join(contexts)
+
+        # ------------------------
+        # LLM phase
+        # ------------------------
+        prompt = build_student_prompt(
+            level=level,
+            source_text=generic_context,
+            exercise_list_text=exercise_list_text,
+            retrieved_context=retrieved_context_text,
+        )
+
+        raw_output = generate_exam_from_llm(prompt)
+
+        # ------------------------
+        # Parse model output
+        # ------------------------
+        try:
+            cleaned_json = extract_json(raw_output)
+            parsed_output = json.loads(cleaned_json)
+            print(parsed_output)
+        except Exception:
+            print("Model did not return valid JSON")
+            db.session.rollback()
+            return jsonify({"message": "Model did not return valid JSON"}), 500
+
+        # ------------------------
+        # Validate top-level structure
+        # ------------------------
+        exercises_output = parsed_output.get("exercises")
+        if not isinstance(exercises_output, list) or not exercises_output:
+            db.session.rollback()
+            print("invalid structure")
+            return jsonify(
+                {"message": "Invalid exam structure returned by model"}
+            ), 500
+
+        if len(exercises_output) != len(exercise_types):
+            db.session.rollback()
+            print("Expected number of excercise blocks")
+            return jsonify({
+                "message": "Model did not return the expected number of exercise blocks"
+            }), 500
+
+        # ------------------------
+        # Persist generated exercise instances
+        # ------------------------
+        print(exercises_output)
+        for index, exercise_block in enumerate(exercises_output):
+            instructions = exercise_block.get("instructions")
+            items = exercise_block.get("items")
+
+            if instructions is None or not isinstance(instructions, str):
+                db.session.rollback()
+                return jsonify({
+                    "message": "Invalid exercise structure returned by model"
+                }), 500
+
+            if not isinstance(items, list) or not items:
+                db.session.rollback()
+                return jsonify({
+                    "message": "Invalid exercise items returned by model"
+                }), 500
+
+            requested_exercise = exercise_types[index]
+
+            final_instructions = instructions.strip()
+            if not final_instructions:
+                final_instructions = requested_exercise.content_description or requested_exercise.name
+
+            public_items, answers = _split_items_and_answers(items)
+
+            instance = ExamExerciseInstance(
+                exam_id=new_exam.id,
+                exercise_type_id=requested_exercise.id,
+                instructions=final_instructions,
+                content_json=json.dumps(public_items),
+                answer_key_json=json.dumps({"answers": answers}),
+            )
+            db.session.add(instance)
+
+        # ------------------------
+        # Persist exam result
+        # ------------------------
+        new_exam.generated_snapshot = cleaned_json
+        new_exam.status = ExamStatus.STUDENT_EXAM.value
+
+        db.session.commit()
+
+        return jsonify(
+            {
+                "message": "Student exam generated successfully",
+                "exam_id": new_exam.id,
+            }
+        ), 201
+
+    except SQLAlchemyError as err:
+        db.session.rollback()
+        print("db error")
+        return jsonify({"message": f"Database error: {err}"}), 500
+
+    except Exception as err:  # pylint: disable=broad-except
+        db.session.rollback()
+        print("unexpected error")
+        return jsonify({"message": f"Unexpected error: {err}"}), 500
