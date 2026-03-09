@@ -26,6 +26,7 @@ from controllers.exam_generation_controller import (
     leave_exam_review,
     accept_exam,
     send_to_correction,
+    submit_correction as controller_submit_correction,
     generate_student_exam
 )
 from utils.types_enum import ExamStatus
@@ -345,3 +346,11 @@ def send_to_correction_route(exam_id: int):
     :type exam_id: int
     """
     return send_to_correction(exam_id)
+
+@exam_bp.route("/api/exam/<int:exam_id>/submit-correction", methods=["PATCH"])
+@jwt_required()
+def submit_correction(exam_id: int):
+    """
+    Docstring for submit-correction route
+    """
+    return controller_submit_correction(exam_id)

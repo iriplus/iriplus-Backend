@@ -15,6 +15,7 @@ load-plugins=
 # Disable noisy or less useful messages
 disable=
     R0903, # too-few-public-methods
+    C0302, # too-many-lines
     W0511, # fixme (TODO/XXX comments)
     W0718, # broad-exception-caught
     E1101, # no-member (SQLAlchemy crea atributos dinámicamente, ej: query, session)

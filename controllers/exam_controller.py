@@ -197,6 +197,14 @@ def update_exam(exam_id: int):
             if not class_obj or class_obj.date_deleted:
                 return jsonify({"message": "Class not found or deleted"}), 404
             exam.class_id = data["class_id"]
+        
+        if data.get("user_id"):
+            print("User ID", data["user_id"])
+            teacher = User.query.get(data["user_id"])
+            if not teacher or teacher.type != UserType.TEACHER:
+                return jsonify({"meesage": "Invalid Teacher type"}), 400
+            exam.user_id = data["user_id"]
+            print("Exam User ID", exam.user_id)
 
         db.session.commit()
         return jsonify({"message": "Exam updated successfully"}), 200
