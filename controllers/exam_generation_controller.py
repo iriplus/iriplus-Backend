@@ -381,6 +381,7 @@ def get_full_exam(exam_id: int):
             exercise_type = instance.exercise_type
 
             result["exercises"].append({
+                "exam_exercise_instance_id": instance.id,
                 "exercise_type": exercise_type.name if exercise_type else None,
                 "instructions": instance.instructions,
                 "items": json.loads(instance.content_json)
@@ -457,7 +458,7 @@ def export_exam_pdf(exam_id: int):
     if not exam or exam.date_deleted:
         return jsonify({"message": "Exam not found"}), 404
 
-    if exam.status != "GENERATED":
+    if exam.status != ExamStatus.ACCEPTED.value:
         return jsonify({"message": "Exam not generated yet"}), 400
 
     buffer = io.BytesIO()
@@ -528,7 +529,7 @@ def export_exam_docx(exam_id: int):
     if not exam or exam.date_deleted:
         return jsonify({"message": "Exam not found"}), 404
 
-    if exam.status != "GENERATED":
+    if exam.status != ExamStatus.ACCEPTED.value:
         return jsonify({"message": "Exam not generated yet"}), 400
 
     document = Document()
@@ -617,8 +618,8 @@ def get_all_exams_controller():
             )
             .filter(
                 Exam.date_deleted.is_(None),
-                Exam.status != "Accepted",
-                Exam.status != "Generating",
+                Exam.status != ExamStatus.GENERATING.value,
+                Exam.status != ExamStatus.STUDENT_EXAM.value,
                 or_(
                     Exam.coordinator_id.is_(None),
                     Exam.coordinator_id == current_user_id
@@ -740,9 +741,56 @@ def get_student_exams_controller():
         print(err)
         return jsonify({"error": str(err)}), 500
 
-def send_exam_to_review(exam_id: int):
+def set_exam_on_correction(exam_id: int):
     """
-    Docstring for send_exam_to_review
+    Docstring for set_exam_on_correction
+    """
+    try:
+        current_user_id = int(get_jwt_identity())
+
+        exam = Exam.query.get(exam_id)
+        if not exam or exam.date_deleted is not None:
+            return jsonify({"error": "Exam not found"}), 404
+
+        if exam.user_id is not None and exam.user_id != current_user_id:
+            return jsonify({"error": "Exam belongs to another teacher"}), 409
+
+        # Pasar a On Correction
+        exam.status = ExamStatus.ON_CORRECTION.value
+        db.session.commit()
+
+        return jsonify({"message": "Moved to On Correction"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+def leave_exam_correction(exam_id: int):
+    """
+    Docstring for leave_exam_correction
+    """
+    try:
+        exam = Exam.query.get(exam_id)
+
+        if not exam or exam.date_deleted is not None:
+            return jsonify({"error": "Exam not found"}), 404
+
+        # Solo permitir si está en corrección
+        if exam.status != ExamStatus.ON_CORRECTION.value:
+            return jsonify({"error": "Exam is not currently On Correction"}), 400
+
+        # Cambiar únicamente el estado
+        exam.status = ExamStatus.PENDING_CORRECTION.value
+        db.session.commit()
+
+        return jsonify({"message": "Exam moved back to Pending Correction"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+def set_exam_on_review(exam_id: int):
+    """
+    Docstring for set_exam_on_review
     """
     try:
         current_user_id = int(get_jwt_identity())
@@ -760,7 +808,7 @@ def send_exam_to_review(exam_id: int):
             exam.coordinator_id = current_user_id
 
         # Pasar a On Review siempre (reanudar)
-        exam.status = "On Review"
+        exam.status = ExamStatus.ON_REVIEW.value
         db.session.commit()
 
         return jsonify({"message": "Moved to On Review"}), 200
@@ -769,6 +817,29 @@ def send_exam_to_review(exam_id: int):
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
+def send_exam_to_review(exam_id: int):
+    """
+    Docstring for send_exam_to_review
+    """
+    try:
+        current_user_id = int(get_jwt_identity())
+
+        exam = Exam.query.get(exam_id)
+        if not exam or exam.date_deleted is not None:
+            return jsonify({"error": "Exam not found"}), 404
+
+        if exam.user_id is not None and exam.user_id != current_user_id:
+            return jsonify({"error": "Exam belongs to another teacher"}), 409
+
+        # Pasar a Pending Review
+        exam.status = ExamStatus.PENDING_REVIEW.value
+        db.session.commit()
+
+        return jsonify({"message": "Moved to Pending Review"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 def leave_exam_review(exam_id: int):
     """
@@ -785,7 +856,7 @@ def leave_exam_review(exam_id: int):
             return jsonify({"error": "Exam is not currently On Review"}), 400
 
         # Cambiar únicamente el estado
-        exam.status = "Pending Review"
+        exam.status = ExamStatus.PENDING_REVIEW.value
         db.session.commit()
 
         return jsonify({"message": "Exam moved back to Pending Review"}), 200
@@ -812,7 +883,7 @@ def accept_exam(exam_id: int):
         if exam.coordinator_id != current_user_id:
             return jsonify({"error": "Not authorized"}), 403
 
-        exam.status = "Accepted"
+        exam.status = ExamStatus.ACCEPTED.value
         db.session.commit()
 
         return jsonify({"message": "Exam accepted"}), 200
@@ -831,7 +902,7 @@ def send_to_correction(exam_id: int):
         return jsonify({"message": "Exam not found"}), 404
 
     data = request.get_json()
-    exam.status = "Pending Correction"
+    exam.status = ExamStatus.PENDING_CORRECTION.value
     exam.notes = data.get("notes")
 
     db.session.commit()
@@ -891,7 +962,7 @@ def submit_correction(exam_id: int):
         if int(exam.user_id) != current_user_id:
             return jsonify({"message": "Unauthorized"}), 403
 
-        if exam.status != ExamStatus.PENDING_CORRECTION.value:
+        if exam.status != ExamStatus.ON_CORRECTION.value:
             return jsonify({
                 "message": "Exam is not editable in current state"
             }), 400

@@ -22,8 +22,11 @@ from controllers.exam_generation_controller import (
     get_all_exams_controller,
     get_teacher_exams_controller,
     get_student_exams_controller,
+    set_exam_on_review,
+    set_exam_on_correction,
     send_exam_to_review,
     leave_exam_review,
+    leave_exam_correction,
     accept_exam,
     send_to_correction,
     submit_correction as controller_submit_correction
@@ -294,6 +297,28 @@ def delete_exam_route(exam_id: int):
     """
     return delete_exam(exam_id)
 
+@exam_bp.route("/api/exam/<int:exam_id>/set-on-review", methods=["PATCH"])
+@jwt_required()
+def set_on_review_route(exam_id: int):
+    """
+    Docstring for set_on_review_route
+    
+    :param exam_id: Description
+    :type exam_id: int
+    """
+    return set_exam_on_review(exam_id)
+
+@exam_bp.route("/api/exam/<int:exam_id>/set-on-correction", methods=["PATCH"])
+@jwt_required()
+def set_on_correction_route(exam_id: int):
+    """
+    Docstring for set_on_correction_route
+    
+    :param exam_id: Description
+    :type exam_id: int
+    """
+    return set_exam_on_correction(exam_id)
+
 @exam_bp.route("/api/exam/<int:exam_id>/send-to-review", methods=["PATCH"])
 @jwt_required()
 def send_to_review_route(exam_id: int):
@@ -315,6 +340,17 @@ def leave_review_route(exam_id: int):
     :type exam_id: int
     """
     return leave_exam_review(exam_id)
+
+@exam_bp.route("/api/exam/<int:exam_id>/leave-correction", methods=["PATCH"])
+@jwt_required()
+def leave_correction_route(exam_id: int):
+    """
+    Docstring for leave_correction_route
+    
+    :param exam_id: Description
+    :type exam_id: int
+    """
+    return leave_exam_correction(exam_id)
 
 @exam_bp.route("/api/exam/<int:exam_id>/accept", methods=["PATCH"])
 @jwt_required()
