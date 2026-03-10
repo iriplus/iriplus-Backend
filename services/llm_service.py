@@ -249,13 +249,12 @@ Required JSON schema:
 """
 
 
-def build_student_scoring_prompt(
+def build_student_correction_prompt(
     level: str,
-    exam_snapshot: str,
-    student_answer: str,
+    correction_payload: str,
 ) -> str:
     """
-    Build the prompt used to score a student's submitted exam.
+    Build the prompt used to correct a student's submitted exam.
     """
 
     return f"""
@@ -263,26 +262,45 @@ You are an expert Cambridge English examiner.
 
 Level: {level}
 
-Official generated exam with correct answers:
-{exam_snapshot}
+You must correct the student's exam attempt using the official answers.
 
-Student submitted answers:
-{student_answer}
+Exam attempt to correct:
+{correction_payload}
 
-Scoring rules:
-- Grade the exam on a scale from 0 to 100.
-- Be pedagogically fair.
-- Compare each student answer against the corresponding correct answer.
-- Accept minor spelling variations only when they do not change the intended answer.
-- Accept equivalent valid answers when the exercise type allows it.
-- Do not invent missing answers.
+Correction rules:
+- Evaluate each item individually.
+- Compare the student's answer with the correct answer.
+- Be fair but rigorous.
+- For closed exercises, mark as correct only if the answer is acceptable.
+- For open-ended exercise types, allow equivalent answers when they preserve the intended meaning and level.
+- Return an INTEGER score from 0 to 100.
+- The score must reflect the overall proportion of correct answers.
 - Output STRICT JSON only.
 - Do NOT include explanations outside JSON.
 
 Required JSON schema:
 
 {{
-  "score": 0
+  "score": 0,
+  "general_feedback": "string",
+  "exercises": [
+    {{
+      "exam_exercise_instance_id": 0,
+      "exercise_type": "string",
+      "correct_count": 0,
+      "total_count": 0,
+      "feedback": "string",
+      "items": [
+        {{
+          "item_index": 0,
+          "student_answer": "string",
+          "correct_answer": "string",
+          "is_correct": true,
+          "feedback": "string"
+        }}
+      ]
+    }}
+  ]
 }}
 """
 
@@ -316,3 +334,25 @@ def generate_score_from_llm(prompt: str) -> str:
     """
 
     return generate_text_from_llm(prompt)
+
+def generate_student_correction_from_llm(prompt: str) -> str:
+    """
+    Call the LLM and return raw correction output text.
+    """
+
+    response = requests.post(
+        OLLAMA_URL,
+        json={
+            "model": MODEL_NAME,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.1
+            }
+        },
+        timeout=300,
+    )
+
+    response.raise_for_status()
+
+    return response.json()["response"]

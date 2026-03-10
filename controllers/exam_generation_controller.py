@@ -32,9 +32,10 @@ from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from orm_models import db, Exam, Class, Exercise, ExamExerciseInstance, User
 from services.rag_service import retrieve_course_context
-from services.llm_service import build_prompt, generate_exam_from_llm, build_refinement_prompt, build_student_prompt
+from services.llm_service import build_prompt, generate_exam_from_llm, build_refinement_prompt, build_student_prompt, build_student_correction_prompt, generate_student_correction_from_llm
 from services.generic_context_service import get_random_generic_context
 from utils.types_enum import ExamStatus
+from utils.exam_xp import calculate_exam_xp, resolve_level_from_xp, apply_exam_xp_to_student
 
 
 def extract_json(text: str) -> str:
@@ -382,6 +383,7 @@ def get_full_exam(exam_id: int):
             exercise_type = instance.exercise_type
 
             result["exercises"].append({
+                "exam_exercise_instance_id": instance.id,
                 "exercise_type": exercise_type.name if exercise_type else None,
                 "instructions": instance.instructions,
                 "items": json.loads(instance.content_json)
@@ -733,7 +735,9 @@ def get_student_exams_controller():
                 "coordinator_full_name": (
                     f"{exam.coordinator_exam.name} {exam.coordinator_exam.surname}"
                     if exam.coordinator_exam else None
-                )
+                ),
+                "score": exam.score,
+                "xp_gained": exam.xp_gained
             })
         return jsonify(result), 200
 
@@ -1263,4 +1267,215 @@ def generate_student_exam():
     except Exception as err:  # pylint: disable=broad-except
         db.session.rollback()
         print("unexpected error")
+        return jsonify({"message": f"Unexpected error: {err}"}), 500
+    
+
+@jwt_required()
+def submit_student_exam(exam_id: int):
+    """
+    Store student answers, correct the exam with the LLM,
+    persist correction details, score and xp.
+    """
+
+    data = request.get_json(silent=True)
+    if not data or "exercises" not in data:
+        return jsonify({"message": "Invalid JSON body"}), 400
+
+    submitted_exercises = data.get("exercises")
+    if not isinstance(submitted_exercises, list) or not submitted_exercises:
+        return jsonify({"message": "exercises must be a non-empty list"}), 400
+
+    user_id = get_jwt_identity()
+
+    try:
+        exam = (
+            Exam.query
+            .options(
+                joinedload(Exam.class_exam),  # type: ignore
+                joinedload(Exam.generated_exercises).joinedload(ExamExerciseInstance.exercise_type)  # type: ignore
+            )
+            .filter(
+                Exam.id == exam_id,
+                Exam.date_deleted.is_(None)
+            )
+            .first()
+        )
+
+        if not exam:
+            return jsonify({"message": "Exam not found"}), 404
+
+        """ if exam.user_id != user_id:
+            return jsonify({"message": "Unauthorized"}), 403 """
+
+        if exam.status != ExamStatus.STUDENT_EXAM.value:
+            return jsonify({"message": "Exam is not in resolvable status"}), 400
+
+        instance_map = {
+            instance.id: instance
+            for instance in exam.generated_exercises
+        }
+
+        correction_payload = {
+            "exam_id": exam.id,
+            "level": exam.class_exam.suggested_level if exam.class_exam else None,
+            "context": exam.context,
+            "exercises": []
+        }
+
+        for submitted_block in submitted_exercises:
+            instance_id = submitted_block.get("exam_exercise_instance_id")
+            submitted_items = submitted_block.get("items")
+
+            if not instance_id or not isinstance(submitted_items, list):
+                db.session.rollback()
+                return jsonify({"message": "Invalid submitted exercise block"}), 400
+
+            instance = instance_map.get(instance_id)
+            if not instance:
+                db.session.rollback()
+                return jsonify({
+                    "message": f"Exercise instance {instance_id} not found"
+                }), 400
+
+            content_items = json.loads(instance.content_json or "[]")
+            answer_key = json.loads(instance.answer_key_json or "{}")
+            correct_answers = answer_key.get("answers", [])
+
+            if len(submitted_items) != len(content_items) or len(submitted_items) != len(correct_answers):
+                db.session.rollback()
+                return jsonify({
+                    "message": f"Answer count mismatch for exercise instance {instance_id}"
+                }), 400
+
+            student_answer_json = {"items": []}
+            llm_items = []
+
+            for index, submitted_item in enumerate(submitted_items):
+                student_answer = (submitted_item.get("student_answer") or "").strip()
+                question = content_items[index].get("question", "")
+                correct_answer = correct_answers[index]
+
+                student_answer_json["items"].append({
+                    "student_answer": student_answer
+                })
+
+                llm_items.append({
+                    "item_index": index,
+                    "question": question,
+                    "correct_answer": correct_answer,
+                    "student_answer": student_answer
+                })
+
+            instance.student_answer_json = json.dumps(student_answer_json)
+
+            correction_payload["exercises"].append({
+                "exam_exercise_instance_id": instance.id,
+                "exercise_type": instance.exercise_type.name if instance.exercise_type else None,
+                "instructions": instance.instructions,
+                "items": llm_items
+            })
+
+        prompt = build_student_correction_prompt(
+            level=exam.class_exam.suggested_level if exam.class_exam else "",
+            correction_payload=json.dumps(correction_payload, ensure_ascii=False)
+        )
+
+        raw_output = generate_student_correction_from_llm(prompt)
+
+        try:
+            cleaned_json = extract_json(raw_output)
+            parsed_output = json.loads(cleaned_json)
+        except Exception:
+            db.session.rollback()
+            return jsonify({"message": "Model did not return valid correction JSON"}), 500
+
+        score = parsed_output.get("score")
+        exercises_correction = parsed_output.get("exercises")
+        general_feedback = parsed_output.get("general_feedback", "")
+
+        if not isinstance(score, int) or score < 0 or score > 100:
+            db.session.rollback()
+            return jsonify({"message": "Invalid score returned by model"}), 500
+
+        if not isinstance(exercises_correction, list):
+            db.session.rollback()
+            return jsonify({"message": "Invalid correction structure returned by model"}), 500
+
+        corrected_instance_ids = set()
+
+        for exercise_correction in exercises_correction:
+            instance_id = exercise_correction.get("exam_exercise_instance_id")
+            if not instance_id:
+                db.session.rollback()
+                return jsonify({"message": "Correction block missing instance id"}), 500
+
+            instance = instance_map.get(instance_id)
+            if not instance:
+                db.session.rollback()
+                return jsonify({"message": f"Unknown corrected instance id {instance_id}"}), 500
+
+            instance.correction_json = json.dumps(exercise_correction)
+            corrected_instance_ids.add(instance_id)
+
+        expected_instance_ids = set(instance_map.keys())
+        if corrected_instance_ids != expected_instance_ids:
+            db.session.rollback()
+            return jsonify({"message": "Model did not correct all exercise blocks"}), 500
+
+        student = db.session.get(User, exam.user_id)
+        if not student:
+            db.session.rollback()
+            return jsonify({"message": "Student not found for this exam"}), 404
+
+        total_items = 0
+        for instance in exam.generated_exercises:
+            content = json.loads(instance.content_json or "[]")
+            if isinstance(content, list):
+                total_items += len(content)
+
+        xp_gained = calculate_exam_xp(
+            level=exam.class_exam.suggested_level if exam.class_exam else "",
+            score=score,
+            total_exercises=total_items,
+        )
+
+        new_accumulated_xp, previous_level_id, new_level_id = apply_exam_xp_to_student(
+            student=student,
+            xp_gained=xp_gained,
+        )
+
+        exam.student_submitted_at = datetime.datetime.now()
+        exam.corrected_at = datetime.datetime.now()
+        exam.score = score
+        exam.xp_gained = xp_gained
+        exam.llm_correction_snapshot = raw_output
+        exam.score_detail_json = json.dumps({
+            "general_feedback": general_feedback,
+            "exercises": exercises_correction,
+            "xp_gained": xp_gained,
+            "student_accumulated_xp": new_accumulated_xp,
+            "previous_level_id": previous_level_id,
+            "new_level_id": new_level_id
+        })
+
+        exam.status = ExamStatus.SOLVED.value
+
+        db.session.commit()
+
+        return jsonify({
+            "message": "Exam submitted and corrected successfully",
+            "exam_id": exam.id,
+            "score": exam.score,
+            "xp_gained": exam.xp_gained,
+            "student_accumulated_xp": new_accumulated_xp,
+            "previous_level_id": previous_level_id,
+            "new_level_id": new_level_id
+        }), 200
+
+    except SQLAlchemyError as err:
+        db.session.rollback()
+        return jsonify({"message": f"Database error: {err}"}), 500
+
+    except Exception as err:  # pylint: disable=broad-except
+        db.session.rollback()
         return jsonify({"message": f"Unexpected error: {err}"}), 500

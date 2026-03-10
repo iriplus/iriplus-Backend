@@ -175,39 +175,53 @@ class Exam(BaseModel):
 
     status = db.Column(db.String(255), nullable=False)
     notes = db.Column(db.Text(1024), nullable=True)
-
-    # Teacher source text used for generation.
     context = db.Column(db.Text, nullable=True)
-
-    # Full raw JSON returned by the LLM (for audit/debug).
     generated_snapshot = db.Column(LONGTEXT, nullable=True)
 
-    # Explicit foreign_keys avoids ambiguity because multiple FKs point to user.id.
-    coordinator_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=True)
+    student_submitted_at = db.Column(db.DateTime, nullable=True)
+    corrected_at = db.Column(db.DateTime, nullable=True)
+
+    score = db.Column(db.Integer, nullable=True)
+    xp_gained = db.Column(db.Integer, nullable=True)
+
+    score_detail_json = db.Column(LONGTEXT, nullable=True)
+    llm_correction_snapshot = db.Column(LONGTEXT, nullable=True)
+
+    coordinator_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        nullable=True
+    )
     coordinator_exam = db.relationship(
         "User",
         back_populates="coordinator_exams",
         foreign_keys="Exam.coordinator_id",
     )
 
-    # Catalog of requested exercise archetypes (N:N).
     exercise_types = db.relationship(
         "Exercise",
         secondary=exam_exercise,
         back_populates="exams",
     )
 
-    # Concrete generated exercise instances (1:N).
     generated_exercises = db.relationship(
         "ExamExerciseInstance",
         back_populates="exam",
         cascade="all, delete-orphan",
     )
 
-    class_id = db.Column(db.Integer, db.ForeignKey("class.id", ondelete="CASCADE"), nullable=False)
+    class_id = db.Column(
+        db.Integer,
+        db.ForeignKey("class.id", ondelete="CASCADE"),
+        nullable=False
+    )
     class_exam = db.relationship("Class", back_populates="exams")
 
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        nullable=True
+    )
     user_exam = db.relationship(
         "User",
         back_populates="assigned_exams",
@@ -359,20 +373,28 @@ class ExamExerciseInstance(BaseModel):
 
     __tablename__ = "exam_exercise_instance"
 
-    exam_id = db.Column(db.Integer, db.ForeignKey("exam.id", ondelete="CASCADE"), nullable=False)
+    exam_id = db.Column(
+        db.Integer,
+        db.ForeignKey("exam.id", ondelete="CASCADE"),
+        nullable=False
+    )
 
     exam = db.relationship(
         "Exam",
         back_populates="generated_exercises",
     )
 
-    exercise_type_id = db.Column(db.Integer, db.ForeignKey("exercise.id", ondelete="CASCADE"), nullable=False)
+    exercise_type_id = db.Column(
+        db.Integer,
+        db.ForeignKey("exercise.id", ondelete="CASCADE"),
+        nullable=False
+    )
 
     exercise_type = db.relationship("Exercise")
 
     instructions = db.Column(db.Text, nullable=False)
-
-    # Using LongText for potentially large JSON payloads (LLM output).
     content_json = db.Column(LONGTEXT, nullable=False)
-
     answer_key_json = db.Column(LONGTEXT, nullable=False)
+
+    student_answer_json = db.Column(LONGTEXT, nullable=True)
+    correction_json = db.Column(LONGTEXT, nullable=True)
