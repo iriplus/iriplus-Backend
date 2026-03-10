@@ -30,7 +30,8 @@ from controllers.exam_generation_controller import (
     accept_exam,
     send_to_correction,
     submit_correction as controller_submit_correction,
-    generate_student_exam
+    generate_student_exam,
+    submit_student_exam
 )
 from utils.types_enum import ExamStatus
 
@@ -390,3 +391,11 @@ def submit_correction(exam_id: int):
     Docstring for submit-correction route
     """
     return controller_submit_correction(exam_id)
+
+@exam_bp.route("/api/exam/<exam_id>/submit", methods=["POST"])
+@jwt_required()
+def submit_exam(exam_id: int):
+    """
+    Docstring for submit exam route
+    """
+    return submit_student_exam(exam_id)
