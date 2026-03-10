@@ -190,11 +190,13 @@ def generate_exam():
                     })
                 )
                 db.session.add(instance)
-        except Exception:
+        except Exception as err:
             db.session.rollback()
+            print('Model error', err)
             return jsonify({"message": "Model did not return valid JSON"}), 500
         # Optional: minimal structural validation
         if "exercises" not in parsed_output:
+            print('Invalid exam structure')
             db.session.rollback()
             return jsonify({"message": "Invalid exam structure returned by model"}), 500
 
@@ -213,10 +215,12 @@ def generate_exam():
             }
         ), 201
     except SQLAlchemyError as err:
+        print('Database error', err)
         db.session.rollback()
         return jsonify({"message": f"Database error: {err}"}), 500
 
     except Exception as err:  # pylint: disable=broad-except
+        print('Unexpected err', err)
         db.session.rollback()
         return jsonify({"message": f"Unexpected error: {err}"}), 500
 
@@ -240,13 +244,13 @@ def refine_exam(exam_id: int):
     if not exam or exam.date_deleted:
         return jsonify({"message": "Exam not found"}), 404
 
-    print(exam.status)
+    original_status = exam.status
     print(exam.user_id)
     print(get_jwt_identity())
     if int(exam.user_id) != int(get_jwt_identity()):
         return jsonify({"message": "Unauthorized"}), 403
 
-    if exam.status != ExamStatus.GENERATING.value:
+    if original_status not in (ExamStatus.GENERATING.value, ExamStatus.ON_CORRECTION.value):
         return jsonify({"message": "Exam is not editable in current state"}), 400
 
     try:
@@ -313,8 +317,10 @@ def refine_exam(exam_id: int):
             db.session.add(instance)
 
         exam.generated_snapshot = raw_output
-        # estado se mantiene en GENERATING hasta "Send to review"
-        exam.status = ExamStatus.GENERATING.value
+        if original_status == ExamStatus.GENERATING.value:
+            exam.status = ExamStatus.GENERATING.value
+        else:
+            exam.status = ExamStatus.ON_CORRECTION.value
 
         db.session.commit()
 
@@ -1082,7 +1088,6 @@ def submit_correction(exam_id: int):
     except Exception as err:  # pylint: disable=broad-except
         db.session.rollback()
         return jsonify({"message": f"Unexpected error: {err}"}), 500
-    
 def _split_items_and_answers(items: List[dict]) -> tuple[List[dict], List[str]]:
     """
     Split generated items into:
@@ -1338,7 +1343,6 @@ def generate_student_exam():
         db.session.rollback()
         print("unexpected error")
         return jsonify({"message": f"Unexpected error: {err}"}), 500
-    
 
 @jwt_required()
 def submit_student_exam(exam_id: int):
