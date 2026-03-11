@@ -31,7 +31,8 @@ from controllers.exam_generation_controller import (
     send_to_correction,
     submit_correction as controller_submit_correction,
     generate_student_exam,
-    submit_student_exam
+    submit_student_exam,
+    get_student_exam_review
 )
 from utils.types_enum import ExamStatus
 
@@ -262,6 +263,16 @@ def get_exam_full(exam_id: int):
     """
     return get_full_exam(exam_id)
 
+@exam_bp.route("/api/exam/<int:exam_id>/review", methods=["GET"])
+@jwt_required()
+def get_exam_review(exam_id: int):
+    """
+    Docstring for get_student_exam_review
+    
+    :param exam_id: Description
+    :type exam_id: int
+    """
+    return get_student_exam_review(exam_id)
 
 @exam_bp.route("/api/exam/<int:exam_id>/export/pdf", methods=["GET"])
 @jwt_required()

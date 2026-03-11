@@ -1553,3 +1553,102 @@ def submit_student_exam(exam_id: int):
     except Exception as err:  # pylint: disable=broad-except
         db.session.rollback()
         return jsonify({"message": f"Unexpected error: {err}"}), 500
+
+
+@jwt_required()
+def get_student_exam_review(exam_id: int):
+    """
+    Return a corrected student exam ready for frontend review.
+    """
+
+    try:
+        current_user_id = int(get_jwt_identity())
+
+        exam = (
+            Exam.query
+            .options(
+                joinedload(Exam.class_exam),  # type: ignore
+                joinedload(Exam.generated_exercises).joinedload(ExamExerciseInstance.exercise_type),  # type: ignore
+                joinedload(Exam.user_exam),  # type: ignore
+            )
+            .filter(
+                Exam.id == exam_id,
+                Exam.date_deleted.is_(None),
+                Exam.user_id == current_user_id,
+            )
+            .first()
+        )
+
+        if not exam:
+            return jsonify({"message": "Exam not found"}), 404
+
+        result = {
+            "id": exam.id,
+            "status": exam.status,
+            "context": exam.context,
+            "notes": exam.notes,
+            "date_created": exam.date_created,
+            "class_id": exam.class_id,
+            "class_description": (
+                exam.class_exam.description if exam.class_exam else None
+            ),
+            "student_id": exam.user_id,
+            "student_full_name": (
+                f"{exam.user_exam.name} {exam.user_exam.surname}"
+                if exam.user_exam else None
+            ),
+            "score": exam.score,
+            "xp_gained": exam.xp_gained,
+            "score_detail": json.loads(exam.score_detail_json)
+            if exam.score_detail_json else None,
+            "exercises": []
+        }
+
+        for instance in exam.generated_exercises:
+            exercise_type = instance.exercise_type
+
+            content_items = json.loads(instance.content_json or "[]")
+            student_answer_data = json.loads(instance.student_answer_json or '{"items": []}')
+            correction_data = json.loads(instance.correction_json or '{"items": []}')
+
+            student_items = student_answer_data.get("items", [])
+            corrected_items = correction_data.get("items", [])
+
+            merged_items = []
+
+            for index, content_item in enumerate(content_items):
+                merged_items.append({
+                    "question": content_item.get("question"),
+                    "has_blank": content_item.get("has_blank", False),
+                    "student_answer": (
+                        student_items[index].get("student_answer")
+                        if index < len(student_items) else None
+                    ),
+                    "correct_answer": (
+                        corrected_items[index].get("correct_answer")
+                        if index < len(corrected_items) else None
+                    ),
+                    "is_correct": (
+                        corrected_items[index].get("is_correct")
+                        if index < len(corrected_items) else None
+                    ),
+                    "feedback": (
+                        corrected_items[index].get("feedback")
+                        if index < len(corrected_items) else None
+                    ),
+                })
+
+            result["exercises"].append({
+                "exam_exercise_instance_id": instance.id,
+                "exercise_type": exercise_type.name if exercise_type else None,
+                "instructions": instance.instructions,
+                "feedback": correction_data.get("feedback"),
+                "correct_count": correction_data.get("correct_count"),
+                "total_count": correction_data.get("total_count"),
+                "items": merged_items,
+            })
+
+        return jsonify(result), 200
+
+    except Exception as err:  # pylint: disable=broad-except
+        return jsonify({"message": f"Unexpected error: {err}"}), 500
