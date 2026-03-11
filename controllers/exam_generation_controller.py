@@ -628,6 +628,8 @@ def get_all_exams_controller():
                 Exam.date_deleted.is_(None),
                 Exam.status != ExamStatus.GENERATING.value,
                 Exam.status != ExamStatus.STUDENT_EXAM.value,
+                Exam.status != ExamStatus.SOLVED.value,
+                Exam.status != ExamStatus.TEST_EXAM.value,
                 or_(
                     Exam.coordinator_id.is_(None),
                     Exam.coordinator_id == current_user_id
