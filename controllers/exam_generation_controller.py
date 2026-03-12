@@ -36,6 +36,7 @@ from services.llm_service import build_prompt, generate_exam_from_llm, build_ref
 from services.generic_context_service import get_random_generic_context
 from utils.types_enum import ExamStatus
 from utils.exam_xp import calculate_exam_xp, resolve_level_from_xp, apply_exam_xp_to_student
+from utils.mpreg_utils import predict_next_student_score, get_difficulty_band
 
 
 def extract_json(text: str) -> str:
@@ -53,7 +54,6 @@ def extract_json(text: str) -> str:
         raise ValueError("No JSON object found in model output")
     return text[start:end + 1]
 
-#No asigna id de profesora al examen. No contempla la maquina de estados que hicimos
 @jwt_required()
 def generate_exam():
     """
@@ -1191,6 +1191,22 @@ def generate_student_exam():
             return jsonify({"message": "Class not found or deleted"}), 404
 
         # ------------------------
+        # Adaptive difficulty phase
+        # ------------------------
+        predicted_score = predict_next_student_score(
+            user_id=user_id,
+            class_obj=class_obj,
+        )
+        difficulty_band = get_difficulty_band(predicted_score)
+
+        print(
+            "Adaptive difficulty | user_id=%s | predicted_score=%s | band=%s",
+            user_id,
+            predicted_score,
+            difficulty_band,
+        )
+
+        # ------------------------
         # Validate exercise types
         # ------------------------
         exercise_types: List[Exercise] = []
@@ -1250,6 +1266,7 @@ def generate_student_exam():
             source_text=generic_context,
             exercise_list_text=exercise_list_text,
             retrieved_context=retrieved_context_text,
+            difficulty_band=difficulty_band,
         )
 
         raw_output = generate_exam_from_llm(prompt)

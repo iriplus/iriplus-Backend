@@ -150,6 +150,7 @@ def build_student_prompt(
     source_text: str,
     exercise_list_text: str,
     retrieved_context: str,
+    difficulty_band: str = "neutral",
 ) -> str:
     """
     Build the prompt used to generate a student exam from a generic source text.
@@ -160,10 +161,47 @@ def build_student_prompt(
     - The correct answer must be returned separately in the 'answer' field.
     """
 
+    difficulty_instruction = {
+        "easier": """
+Adaptive difficulty instruction:
+- Keep the same Cambridge level.
+- Make the exam slightly easier within that level.
+- Use clearer wording and more direct clues.
+- Prefer more frequent vocabulary.
+- Use less misleading distractors.
+- Avoid overly tricky transformations.
+- Keep items fair, solvable, and confidence-building for the student.
+""",
+        "neutral": """
+Adaptive difficulty instruction:
+- Keep the standard difficulty for this Cambridge level.
+- Do not intentionally simplify or increase difficulty.
+""",
+        "harder": """
+Adaptive difficulty instruction:
+- Keep the same Cambridge level.
+- Make the exam slightly harder within that level.
+- Use less obvious clues.
+- Use stronger distractors.
+- Increase paraphrasing difficulty moderately.
+- Make transformations less direct, but still fair for the level.
+- Keep the exam challenging but fully appropriate for the stated level.
+""",
+    }.get(
+        difficulty_band,
+        """
+Adaptive difficulty instruction:
+- Keep the standard difficulty for this Cambridge level.
+- Do not intentionally simplify or increase difficulty.
+""",
+    )
+
     return f"""
 You are an expert Cambridge English exam designer.
 
 Level: {level}
+
+{difficulty_instruction}
 
 Source text:
 {source_text}
@@ -182,7 +220,8 @@ Critical formatting rules:
 - Preserve the SAME ORDER as the requested exercise types.
 - The exam must be based on the source text.
 - Content must be original.
-- Difficulty must strictly match the Cambridge level.
+- Difficulty must remain appropriate for the stated Cambridge level.
+- Apply the adaptive difficulty instruction above only within that same level.
 - All content must be in English.
 - Output STRICT JSON only.
 - Do NOT include explanations outside JSON.
