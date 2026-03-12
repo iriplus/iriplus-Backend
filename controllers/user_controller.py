@@ -17,6 +17,7 @@ from orm_models import db, User, Class
 from utils.types_enum import UserType
 from utils.email_utils import send_welcome_email
 from utils.token_utils import generate_verification_token
+from services.captcha_service import verify_captcha
 
 
 # ---------------------------------------------------------------------------
@@ -174,18 +175,25 @@ def register_student():
 
     data = request.get_json(silent=True) or {}
 
+    captcha_token = data.get("captcha")
+
+    if not verify_captcha(captcha_token): # type: ignore
+        return jsonify({"message": "Captcha verification failed"}), 400
+    
+    user_data = data.get("user", {})
+
     required_fields = ["name", "surname", "email", "passwd", "dni", "class_code"]
 
-    missing = [f for f in required_fields if not data.get(f)]
+    missing = [f for f in required_fields if not user_data.get(f)]
     if missing:
         return jsonify({
             "message": f"Missing required fields: {', '.join(missing)}"}), 400
-    name = data["name"].strip()
-    surname = data["surname"].strip()
-    email = data["email"].strip().lower()
-    passwd = data["passwd"]
-    dni = data["dni"].strip()
-    class_code = data["class_code"].strip()
+    name = user_data["name"].strip()
+    surname = user_data["surname"].strip()
+    email = user_data["email"].strip().lower()
+    passwd = user_data["passwd"]
+    dni = user_data["dni"].strip()
+    class_code = user_data["class_code"].strip()
 
     try:
         # Check for existing email or DNI

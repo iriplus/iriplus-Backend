@@ -27,6 +27,7 @@ from orm_models import User, db
 from extensions.mail_extension import mail
 from utils.brevo_mail import send_brevo_email
 from utils.types_enum import UserType
+from services.captcha_service import verify_captcha
 
 
 # ----------------------------------------------------------
@@ -117,6 +118,12 @@ def login_controller():
         403 if the user's email is not yet verified.
     """
     data = request.get_json(silent=True) or {}
+
+    captcha_token = data.get("captcha")
+
+    if not verify_captcha(captcha_token): # type: ignore
+        return jsonify({"msg": "Captcha verification failed"}), 400
+
     email = data.get("email")
     password = data.get("password")
 
@@ -287,6 +294,12 @@ def send_reset_code_controller():
         404 if no user matches the provided email address.
     """
     data = request.get_json(silent=True) or {}
+
+    captcha_token = data.get("captcha")
+
+    if not verify_captcha(captcha_token): # type: ignore
+        return jsonify({"msg": "Captcha verification failed"}), 400
+    
     email = data.get("email")
 
     if not isinstance(email, str) or not email.strip():
