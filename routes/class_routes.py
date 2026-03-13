@@ -193,4 +193,7 @@ def delete_class(class_id: int):
 @class_bp.route("/api/class/validate-code/<string:class_code>", methods=["GET"])
 @jwt_required()
 def validate_class_code(class_code: str):
+    """
+    Validates a Class Code
+    """
     return controller_validate_class_code(class_code)

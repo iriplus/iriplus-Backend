@@ -174,13 +174,28 @@ def update_class(class_id: int):
             return jsonify({"message": "Class not found"}), 404
 
         data = request.get_json(silent=True)
-
         if not data:
             return jsonify({"message": "Invalid JSON body"}), 400
 
-        clazz.description = data.get("description", clazz.description)
-        clazz.suggested_level = data.get("suggested_level", clazz.suggested_level)
-        clazz.max_capacity = int(data["max_capacity"])
+
+        new_description = data.get("description", clazz.description)
+        new_suggested_level = data.get("suggested_level", clazz.suggested_level)
+        new_max_capacity = int(data["max_capacity"])
+
+        active_students_count = (
+            db.session.query(User.id)
+            .filter(
+                User.student_class_id == clazz.id,
+                User.date_deleted.is_(None),
+                User.is_verified.is_(True)
+            ).count()
+        )
+
+        if active_students_count > new_max_capacity:
+            return jsonify({"message": f"Max capacity cannot be lower than the number of active enrolled students({active_students_count})."}), 409
+        clazz.description = new_description
+        clazz.suggested_level = new_suggested_level
+        clazz.max_capacity = new_max_capacity
 
         teacher_ids = data.get("teacher_ids")
 
@@ -217,22 +232,33 @@ def delete_class(class_id: int):
     Returns:
         JSON with a success message, or 404 if the class does not exist.
     """
-    clazz = Class.query.get(class_id)
-    if not clazz or clazz.date_deleted is not None:
-        return jsonify({"message": "Class not found"}), 404
-
     try:
+        clazz = Class.query.get(class_id)
+        if not clazz or clazz.date_deleted is not None:
+            return jsonify({"message": "Class not found"}), 404
+        active_students_exist = (
+            db.session.query(User.id)
+            .filter(
+                User.student_class_id == clazz.id,
+                User.date_deleted.is_(None),
+                User.is_verified.is_(True),
+            )
+            .first()
+            is not None
+        )
+
+        if active_students_exist:
+            return jsonify({"message": "This Class has students"}), 409
         # Soft delete by timestamp; keep record for audit and FK integrity.
         clazz.date_deleted = datetime.datetime.now()
         db.session.commit()
         return jsonify({"message": "Class deleted successfully"}), 200
-
     except SQLAlchemyError as err:
         db.session.rollback()
         return jsonify({"message": f"Database error: {err}"}), 500
     except Exception as err:  # pylint: disable=broad-except
         db.session.rollback()
-        return jsonify({"message": {f"Something went wrong: {err}"}}), 500
+        return jsonify({"message": f"Something went wrong: {err}"}), 500
 
 def validate_class_code(class_code: str):
     """Validate class code and check availability."""

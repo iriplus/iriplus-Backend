@@ -299,7 +299,6 @@ def send_reset_code_controller():
 
     if not verify_captcha(captcha_token): # type: ignore
         return jsonify({"msg": "Captcha verification failed"}), 400
-    
     email = data.get("email")
 
     if not isinstance(email, str) or not email.strip():
