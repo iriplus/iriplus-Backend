@@ -57,3 +57,17 @@ class ExerciseArchetype(enum.Enum):
 
     # Test archetype: used for testing purposes
     TEST_ARCHETYPE = "Test archetype"
+
+class MonthName(str, enum.Enum):
+    JANUARY = "January"
+    FEBRUARY = "February"
+    MARCH = "March"
+    APRIL = "April"
+    MAY = "May"
+    JUNE = "June"
+    JULY = "July"
+    AUGUST = "August"
+    SEPTEMBER = "September"
+    OCTOBER = "October"
+    NOVEMBER = "November"
+    DECEMBER = "December"
