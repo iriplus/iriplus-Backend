@@ -60,7 +60,7 @@ def serialize_user(user: User) -> dict:
                 "class_code": clazz.class_code,
                 "description": clazz.description,
             }
-            if clazz
+            if clazz and clazz.date_deleted is None
             else None
         )
 
@@ -70,7 +70,7 @@ def serialize_user(user: User) -> dict:
                 "description": level.description,
                 "min_xp": level.min_xp,
             }
-            if level
+            if level and level.date_deleted is None
             else None
         )
 
@@ -83,6 +83,9 @@ def serialize_user(user: User) -> dict:
                 "description": c.description,
                 "suggested_level": c.suggested_level,
                 "max_capacity": c.max_capacity,
+                "students_count": sum(
+                    1 for student in (c.students or []) if student.date_deleted is None and student.is_verified is True
+                ),
             }
             for c in classes
         ]
@@ -179,7 +182,6 @@ def register_student():
 
     if not verify_captcha(captcha_token): # type: ignore
         return jsonify({"message": "Captcha verification failed"}), 400
-    
     user_data = data.get("user", {})
 
     required_fields = ["name", "surname", "email", "passwd", "dni", "class_code"]

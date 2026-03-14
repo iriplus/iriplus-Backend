@@ -232,7 +232,6 @@ def refine_exam(exam_id: int):
     :type exam_id: int
     """
     data = request.get_json(silent=True)
-    print("Data", data)
     if not data:
         return jsonify({"message": "Invalid JSON body"}), 400
 
@@ -245,8 +244,6 @@ def refine_exam(exam_id: int):
         return jsonify({"message": "Exam not found"}), 404
 
     original_status = exam.status
-    print(exam.user_id)
-    print(get_jwt_identity())
     if int(exam.user_id) != int(get_jwt_identity()):
         return jsonify({"message": "Unauthorized"}), 403
 
@@ -257,20 +254,15 @@ def refine_exam(exam_id: int):
         # Nivel para el prompt (mismo criterio que en generate)
         level = exam.class_exam.suggested_level
 
-        print("Level", level)
         refinement_prompt = build_refinement_prompt(
             level=level,
             original_snapshot=exam.generated_snapshot,
             teacher_feedback=feedback,
         )
-        print("refinement promp", refinement_prompt)
         raw_output = generate_exam_from_llm(refinement_prompt)
 
-        print("Raw Output", raw_output)
         cleaned_json = extract_json(raw_output)
-        print("Cleaned Json", cleaned_json)
         parsed_output = json.loads(cleaned_json)
-        print("Parsed Output", parsed_output)
 
         if "exercises" not in parsed_output:
             return jsonify({"message": "Invalid exam structure returned by model"}), 500
@@ -974,7 +966,10 @@ def submit_correction(exam_id: int):
         if int(exam.user_id) != current_user_id:
             return jsonify({"message": "Unauthorized"}), 403
 
-        if exam.status != ExamStatus.ON_CORRECTION.value:
+        if exam.status not in (
+            ExamStatus.ON_CORRECTION.value,
+            ExamStatus.GENERATING.value,
+        ):
             return jsonify({
                 "message": "Exam is not editable in current state"
             }), 400
@@ -1378,8 +1373,6 @@ def submit_student_exam(exam_id: int):
     if not isinstance(submitted_exercises, list) or not submitted_exercises:
         return jsonify({"message": "exercises must be a non-empty list"}), 400
 
-    user_id = get_jwt_identity()
-
     try:
         exam = (
             Exam.query
@@ -1396,9 +1389,6 @@ def submit_student_exam(exam_id: int):
 
         if not exam:
             return jsonify({"message": "Exam not found"}), 404
-
-        """ if exam.user_id != user_id:
-            return jsonify({"message": "Unauthorized"}), 403 """
 
         if exam.status != ExamStatus.STUDENT_EXAM.value:
             return jsonify({"message": "Exam is not in resolvable status"}), 400

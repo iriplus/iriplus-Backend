@@ -28,6 +28,7 @@ from extensions.mail_extension import mail
 from utils.brevo_mail import send_brevo_email
 from utils.types_enum import UserType
 from services.captcha_service import verify_captcha
+from controllers.user_controller import serialize_user
 
 
 # ----------------------------------------------------------
@@ -172,39 +173,16 @@ def me_controller():
     Returns:
         200 OK with user fields.
         404 if the authenticated user cannot be found.
+        403 if the authenticated user is not verified
     """
     user_id = get_jwt_identity()
     user = db.session.get(User, user_id)
-
     if not user or user.date_deleted is not None:
         return jsonify({"msg": "User not found"}), 404
     if user.is_verified is False:
         return jsonify({"msg": "Email not verified"}), 403
 
-    response = {
-            "id": user.id,
-            "name": user.name,
-            "surname": user.surname,
-            "email": user.email,
-            "dni": user.dni,
-            "type": user.type.value,
-            "profile_picture": user.profile_picture,
-            "is_verified": user.is_verified,
-            "student_class_id": user.student_class_id,
-            "accumulated_xp": user.accumulated_xp,
-        }
-    if user.type == UserType.TEACHER:
-        response["teacher_classes"] = [
-            {
-                "id": cls.id,
-                "class_code": cls.class_code,
-                "description": cls.description,
-                "max_capacity": cls.max_capacity,
-                "students_count": len(cls.students)
-            }
-            for cls in user.teacher_classes # type: ignore
-        ]
-    return response, 200
+    return jsonify(serialize_user(user)), 200
 
 
 # ----------------------------------------------------------
