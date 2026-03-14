@@ -294,6 +294,8 @@ class User(BaseModel):
     is_verified = db.Column(db.Boolean,nullable=False, default=False)
     passwd = db.Column(db.String(255), nullable=False)
     profile_picture = db.Column(db.Text(1024), nullable=True)
+    tuition_last_paid_month = db.Column(db.String(20), nullable=True)
+    tuition_payment_date = db.Column(db.Date, nullable=True)
 
     # SQLAlchemy Enum bound to the Python Enum, persisted as strings by default.
     type = db.Column(Enum(UserType), nullable=False)
