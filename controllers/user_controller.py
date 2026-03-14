@@ -11,11 +11,11 @@ import bcrypt
 from flask import request, jsonify
 from flask_jwt_extended import get_jwt_identity
 from sqlalchemy import func
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy.orm import joinedload
 from orm_models import db, User, Class
 from utils.types_enum import UserType
-from utils.email_utils import send_welcome_email
+from utils.email_utils import send_welcome_email, send_email_change_verification_email
 from utils.token_utils import generate_verification_token
 from services.captcha_service import verify_captcha
 
@@ -214,6 +214,7 @@ def register_student():
             .filter(
                 User.student_class_id == clazz.id,
                 User.date_deleted.is_(None),
+                User.is_verified.is_(True),
             ).scalar()
         )
 
@@ -364,8 +365,7 @@ def get_my_students():
     return jsonify([serialize_user(s) for s in students]), 200
 
 def update_user(user_id: int):
-    """Update an existing user’s mutable fields."""
-
+    """Update an existing user's mutable fields."""
     user = User.query.get(user_id)
     if not user or user.date_deleted is not None:
         return jsonify({"message": "User not found."}), 404
@@ -374,60 +374,139 @@ def update_user(user_id: int):
     if not data:
         return jsonify({"message": "Invalid JSON body."}), 400
 
+    personal_fields = {"name", "surname", "email", "dni"}
+    is_personal_update = any(field in data for field in personal_fields)
+
+    if is_personal_update:
+        provided_password = (data.get("passwd") or "").strip()
+        if not provided_password:
+            return jsonify({"message": "Current password is required."}), 400
+
+        if not bcrypt.checkpw(
+            provided_password.encode("utf-8"),
+            user.passwd.encode("utf-8"),
+        ):
+            return jsonify({"message": "Current password is incorrect."}), 401
+
+        if "name" in data:
+            normalized_name = str(data["name"]).strip()
+            if not normalized_name:
+                return jsonify({"message": "Name is required."}), 400
+            data["name"] = normalized_name
+
+        if "surname" in data:
+            normalized_surname = str(data["surname"]).strip()
+            if not normalized_surname:
+                return jsonify({"message": "Surname is required."}), 400
+            data["surname"] = normalized_surname
+
+        if "email" in data:
+            normalized_email = str(data["email"]).strip().lower()
+            if not normalized_email:
+                return jsonify({"message": "Email is required."}), 400
+
+            existing_email = (
+                User.query.filter(
+                    func.lower(User.email) == normalized_email,
+                    User.id != user.id,
+                    User.date_deleted.is_(None),
+                    User.is_verified.is_(True),
+                ).first()
+            )
+            if existing_email:
+                return jsonify({"message": "Email already exists."}), 409
+
+            data["email"] = normalized_email
+
+        if "dni" in data:
+            normalized_dni = str(data["dni"]).strip()
+            if not normalized_dni:
+                return jsonify({"message": "DNI is required."}), 400
+
+            existing_dni = (
+                User.query.filter(
+                    func.trim(User.dni) == normalized_dni,
+                    User.id != user.id,
+                    User.date_deleted.is_(None),
+                    User.is_verified.is_(True),
+                ).first()
+            )
+            if existing_dni:
+                return jsonify({"message": "DNI already exists."}), 409
+
+            data["dni"] = normalized_dni
+
+    if "student_class_id" in data:
+        new_class_id = data["student_class_id"]
+
+        if new_class_id is not None:
+            clazz = Class.query.get(new_class_id)
+            if not clazz or clazz.date_deleted is not None:
+                return jsonify({"message": "Class not found."}), 404
+
+            if user.student_class_id != new_class_id:
+                current_students = (
+                    db.session.query(func.count(User.id))  # pylint: disable=not-callable
+                    .filter(
+                        User.student_class_id == clazz.id,
+                        User.date_deleted.is_(None),
+                        User.is_verified.is_(True),
+                    )
+                    .scalar()
+                )
+
+                if current_students >= clazz.max_capacity:
+                    return jsonify(
+                        {"message": "Class is full. No spots available."}
+                    ), 409
+
+    previous_email = user.email
     updatable_fields = [
         "name",
         "surname",
+        "email",
+        "dni",
         "profile_picture",
         "accumulated_xp",
         "student_level_id",
         "student_class_id",
     ]
 
-    # 🔹 VALIDACIÓN DE CUPO SI CAMBIA student_class_id
-    if "student_class_id" in data:
-        new_class_id = data["student_class_id"]
-
-        if new_class_id is not None:
-            clazz = Class.query.get(new_class_id)
-
-            if not clazz or clazz.date_deleted is not None:
-                return jsonify({"message": "Class not found."}), 404
-
-            # Si ya está en esa clase, no validar cupo
-            if user.student_class_id != new_class_id:
-
-                current_students = (
-                    db.session.query(func.count(User.id))  # pylint: disable=not-callable
-                    .filter(
-                        User.student_class_id == clazz.id,
-                        User.date_deleted.is_(None),
-                    )
-                    .scalar()
-                )
-
-                if current_students >= clazz.max_capacity:
-                    return jsonify({
-                        "message": "Class is full. No spots available."
-                    }), 409
-
     for field in updatable_fields:
         if field in data:
             setattr(user, field, data[field])
 
+    email_changed = "email" in data and data["email"] != previous_email
+    if email_changed:
+        user.is_verified = False
+
     try:
         db.session.commit()
-        return jsonify({
-            "message": "User updated successfully.",
-            "user": serialize_user(user)
-        }), 200
+    except IntegrityError as err:
+        db.session.rollback()
+        error_text = str(err.orig).lower()
 
+        if "email" in error_text:
+            return jsonify({"message": "Email already exists."}), 409
+        if "dni" in error_text:
+            return jsonify({"message": "DNI already exists."}), 409
+
+        return jsonify({"message": "A duplicate value already exists."}), 409
     except SQLAlchemyError as err:
         db.session.rollback()
         return jsonify({"message": f"Database error: {err}"}), 400
-
-    except Exception as err:
+    except Exception as err:  # pylint: disable=broad-except
         db.session.rollback()
         return jsonify({"message": f"Unexpected error: {err}"}), 500
+
+    if email_changed:
+        try:
+            token = generate_verification_token(user.email)
+            send_email_change_verification_email(user.email, user.name, token)
+        except Exception:  # pylint: disable=broad-except
+            pass
+
+    return jsonify(serialize_user(user)), 200
 
 
 def delete_user(user_id: int):
