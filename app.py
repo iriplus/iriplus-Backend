@@ -6,13 +6,11 @@ blueprints for modular routes.
 
 Run this file directly to start the development server.
 """
-
 from dotenv import load_dotenv
 load_dotenv(".env")
 
 import os
 from flask import Flask
-from dotenv import load_dotenv
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
 from flasgger import Swagger
@@ -25,6 +23,7 @@ from routes.exam_routes import exam_bp
 from routes.test_mail import test_mail_bp
 from routes.exercise_routes import exercise_bp
 from routes.tuition_routes import tuition_bp
+from routes.analytics_routes import analytics_bp
 from swagger.config import swagger_config
 from swagger.template import swagger_template
 from extensions.mail_extension import mail
@@ -34,7 +33,6 @@ from extensions.redis_extension import get_redis_client
 # ----------------------------------------------------------------------------
 # Environment configuration
 # ----------------------------------------------------------------------------
-load_dotenv(".env")
 env_name = os.getenv("ENVIRONMENT", "dev")
 if env_name == "production":
     load_dotenv(".env.production")
@@ -133,6 +131,7 @@ app.register_blueprint(exam_bp)
 app.register_blueprint(exercise_bp)
 app.register_blueprint(test_mail_bp)
 app.register_blueprint(tuition_bp)
+app.register_blueprint(analytics_bp)
 
 
 
