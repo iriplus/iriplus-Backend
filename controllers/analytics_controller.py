@@ -1,7 +1,9 @@
 """Analytics controller for the Home dashboard.
 
 This module exposes role-aware analytics payloads for the authenticated user.
-For now, only the Coordinator dashboard is implemented.
+Implemented:
+- Coordinator Dashboard
+- Student Dashboard
 
 Rules applied consistently:
 - Soft-deleted records are excluded.
@@ -11,14 +13,49 @@ Rules applied consistently:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date, time
 
 from flask import jsonify
 from flask_jwt_extended import get_jwt_identity
 from sqlalchemy import func
+from sqlalchemy.exc import SQLAlchemyError
 
-from orm_models import db, User, Class
+from orm_models import db, User, Class, Exam, Level
 from utils.types_enum import UserType
+
+LEADERBOARD_LIMIT = 10
+LAST_EXAMS_LIMIT = 5
+WEEKLY_XP_DAYS = 7
+DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
+
+def _build_user_full_name(user: User) -> str:
+    """Return the display name for a user.
+
+    Args:
+        user: User ORM instance.
+
+    Returns:
+        The user's full name with safe whitespace trimming.
+    """
+    return f"{user.name} {user.surname}".strip()
+
+
+def _format_iso_date(value: datetime | None) -> str:
+    """Format a datetime as an ISO date string.
+
+    Args:
+        value: Datetime to format.
+
+    Returns:
+        A YYYY-MM-DD string, or "-" when the value is missing.
+    """
+    if value is None:
+        return "-"
+    return value.date().isoformat()
 
 
 def _count_enrolled_students(created_after: datetime | None = None) -> int:
@@ -48,6 +85,9 @@ def _count_enrolled_students(created_after: datetime | None = None) -> int:
 
     return int(query.scalar() or 0)
 
+# ---------------------------------------------------------------------------
+# Coordinator helpers
+# ---------------------------------------------------------------------------
 
 def _calculate_average_course_occupancy() -> int:
     """Calculate the average occupancy percentage across active classes.
@@ -119,38 +159,460 @@ def _serialize_coordinator_dashboard() -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# Student helpers
+# ---------------------------------------------------------------------------
+
+def _build_empty_student_course_summary() -> dict:
+    """Return a safe empty course summary for students without an active class.
+
+    Returns:
+        A default course summary payload.
+    """
+    return {
+        "name": "No active course assigned",
+        "description": (
+            "You are not assigned to an active course yet. "
+            "Please contact the institute staff if this looks incorrect."
+        ),
+        "teachers": ["Not assigned yet"],
+        "studentsEnrolled": 0,
+        "englishLevel": "Not assigned",
+    }
+
+
+def _get_active_levels() -> list[Level]:
+    """Return all active levels ordered by minimum XP.
+
+    Returns:
+        A list of active Level ORM instances ordered ascending by min_xp.
+    """
+    return (
+        Level.query
+        .filter(Level.date_deleted.is_(None))
+        .order_by(Level.min_xp.asc())
+        .all()
+    )
+
+
+def _resolve_level_number(accumulated_xp: int, levels: list[Level]) -> int:
+    """Resolve the numeric level position based on accumulated XP.
+
+    Args:
+        accumulated_xp: Current XP for the student.
+        levels: Active levels ordered by min_xp ascending.
+
+    Returns:
+        The 1-based numeric level position.
+    """
+    if not levels:
+        return 1
+
+    current_level_number = 1
+
+    for index, level in enumerate(levels, start=1):
+        if accumulated_xp >= int(level.min_xp):
+            current_level_number = index
+        else:
+            break
+
+    return current_level_number
+
+
+def _resolve_next_level_xp(accumulated_xp: int, levels: list[Level]) -> int:
+    """Resolve the XP threshold for the next level.
+
+    Args:
+        accumulated_xp: Current XP for the student.
+        levels: Active levels ordered by min_xp ascending.
+
+    Returns:
+        The min_xp of the next level, or the current XP when the student is
+        already at the highest level.
+    """
+    for level in levels:
+        if accumulated_xp < int(level.min_xp):
+            return int(level.min_xp)
+
+    return accumulated_xp
+
+
+def _serialize_student_course_summary(student: User) -> dict:
+    """Build the student's current course summary.
+
+    Args:
+        student: Authenticated student user.
+
+    Returns:
+        A JSON-serializable course summary payload.
+    """
+    clazz = student.student_class
+
+    if clazz is None or clazz.date_deleted is not None:
+        return _build_empty_student_course_summary()
+
+    teacher_names = sorted(
+        _build_user_full_name(teacher)
+        for teacher in (clazz.teachers or [])
+        if (
+            teacher.date_deleted is None
+            and teacher.is_verified is True
+            and teacher.type == UserType.TEACHER
+        )
+    )
+
+    if not teacher_names:
+        teacher_names = ["Not assigned yet"]
+
+    students_enrolled = int(
+        db.session.query(func.count(User.id))  # pylint: disable=not-callable
+        .filter(
+            User.type == UserType.STUDENT,
+            User.student_class_id == clazz.id,
+            User.date_deleted.is_(None),
+            User.is_verified.is_(True),
+        )
+        .scalar() or 0
+    )
+
+    return {
+        "name": clazz.description,
+        "description": (
+            f"{clazz.class_code} course with a suggested English level of "
+            f"{clazz.suggested_level}."
+        ),
+        "teachers": teacher_names,
+        "studentsEnrolled": students_enrolled,
+        "englishLevel": clazz.suggested_level,
+    }
+
+
+def _sort_students_for_leaderboard(
+    students: list[User],
+    levels: list[Level],
+) -> list[User]:
+    """Sort students by level first and XP second.
+
+    Args:
+        students: Student users to rank.
+        levels: Active level definitions.
+
+    Returns:
+        The sorted student list in descending leaderboard order.
+    """
+    return sorted(
+        students,
+        key=lambda student: (
+            -_resolve_level_number(int(student.accumulated_xp or 0), levels),
+            -int(student.accumulated_xp or 0),
+            _build_user_full_name(student).lower(),
+        ),
+    )
+
+
+def _serialize_ranked_leaderboard(
+    students: list[User],
+    current_user_id: int,
+    levels: list[Level],
+    limit: int = LEADERBOARD_LIMIT,
+) -> list[dict]:
+    """Serialize a ranked leaderboard and always include the current student.
+
+    Args:
+        students: Student users to rank.
+        current_user_id: Authenticated student's ID.
+        levels: Active level definitions.
+        limit: Maximum number of top entries to include before optionally
+            appending the current student.
+
+    Returns:
+        A JSON-serializable leaderboard payload.
+    """
+    sorted_students = _sort_students_for_leaderboard(students, levels)
+
+    leaderboard: list[dict] = []
+    current_student_entry: dict | None = None
+
+    for index, student in enumerate(sorted_students, start=1):
+        accumulated_xp = int(student.accumulated_xp or 0)
+        entry = {
+            "rank": index,
+            "name": _build_user_full_name(student),
+            "level": _resolve_level_number(accumulated_xp, levels),
+            "xp": accumulated_xp,
+            "isCurrentUser": student.id == current_user_id,
+        }
+
+        if index <= limit:
+            leaderboard.append(entry)
+
+        if student.id == current_user_id:
+            current_student_entry = entry
+
+    if current_student_entry is not None:
+        already_included = any(
+            entry.get("isCurrentUser") is True for entry in leaderboard
+        )
+        if not already_included:
+            leaderboard.append(current_student_entry)
+
+    return leaderboard
+
+
+def _get_global_leaderboard_students() -> list[User]:
+    """Return active, verified students enrolled in active classes.
+
+    Returns:
+        The list of student users eligible for the global leaderboard.
+    """
+    return (
+        User.query
+        .join(Class, Class.id == User.student_class_id)
+        .filter(
+            User.type == UserType.STUDENT,
+            User.date_deleted.is_(None),
+            User.is_verified.is_(True),
+            User.student_class_id.isnot(None),
+            Class.date_deleted.is_(None),
+        )
+        .all()
+    )
+
+
+def _get_course_leaderboard_students(class_id: int | None) -> list[User]:
+    """Return active, verified students for the given class.
+
+    Args:
+        class_id: Class ID to filter by.
+
+    Returns:
+        The list of student users eligible for the course leaderboard.
+    """
+    if class_id is None:
+        return []
+
+    return (
+        User.query
+        .join(Class, Class.id == User.student_class_id)
+        .filter(
+            User.type == UserType.STUDENT,
+            User.student_class_id == class_id,
+            User.date_deleted.is_(None),
+            User.is_verified.is_(True),
+            Class.date_deleted.is_(None),
+        )
+        .all()
+    )
+
+
+def _serialize_student_weekly_xp(student_id: int) -> list[dict]:
+    """Build the student's XP gain for the last 7 days.
+
+    XP is counted using corrected exams with a non-null xp_gained value.
+
+    Args:
+        student_id: Student user ID.
+
+    Returns:
+        A list of seven points ordered from oldest to newest.
+    """
+    today = date.today()
+    days = [
+        today - timedelta(days=offset)
+        for offset in reversed(range(WEEKLY_XP_DAYS))
+    ]
+
+    xp_by_day: dict[date, int] = {day: 0 for day in days}
+
+    start_dt = datetime.combine(days[0], time.min)
+    end_dt = datetime.combine(today + timedelta(days=1), time.min)
+
+    exams = (
+        Exam.query
+        .filter(
+            Exam.user_id == student_id,
+            Exam.date_deleted.is_(None),
+            Exam.corrected_at.isnot(None),
+            Exam.xp_gained.isnot(None),
+            Exam.corrected_at >= start_dt,
+            Exam.corrected_at < end_dt,
+        )
+        .all()
+    )
+
+    for exam in exams:
+        if exam.corrected_at is None:
+            continue
+
+        exam_day = exam.corrected_at.date()
+        if exam_day in xp_by_day:
+            xp_by_day[exam_day] += int(exam.xp_gained or 0)
+
+    return [
+        {
+            "label": DAY_LABELS[day.weekday()],
+            "value": xp_by_day[day],
+        }
+        for day in days
+    ]
+
+
+def _serialize_student_progress(student: User, levels: list[Level]) -> dict:
+    """Build the student's current progress block.
+
+    Args:
+        student: Authenticated student user.
+        levels: Active level definitions.
+
+    Returns:
+        A JSON-serializable progress payload.
+    """
+    current_xp = int(student.accumulated_xp or 0)
+
+    return {
+        "currentLevel": _resolve_level_number(current_xp, levels),
+        "currentXp": current_xp,
+        "nextLevelXp": _resolve_next_level_xp(current_xp, levels),
+    }
+
+
+def _serialize_student_last_exams(student_id: int) -> list[dict]:
+    """Build the student's latest corrected exams list.
+
+    Args:
+        student_id: Student user ID.
+
+    Returns:
+        A JSON-serializable list of recent corrected exams.
+    """
+    order_expression = func.coalesce( # pylint: disable=assignment-from-no-return
+        Exam.corrected_at,
+        Exam.student_submitted_at,
+        Exam.date_created,
+    )
+
+    exams = (
+        Exam.query
+        .filter(
+            Exam.user_id == student_id,
+            Exam.date_deleted.is_(None),
+            Exam.corrected_at.isnot(None),
+            Exam.score.isnot(None),
+            Exam.xp_gained.isnot(None),
+        )
+        .order_by(order_expression.desc())
+        .limit(LAST_EXAMS_LIMIT)
+        .all()
+    )
+
+    payload: list[dict] = []
+
+    for exam in exams:
+        completed_at = (
+            exam.student_submitted_at
+            or exam.corrected_at
+            or exam.date_created
+        )
+
+        payload.append(
+            {
+                "id": exam.id,
+                "completedAt": _format_iso_date(completed_at),
+                "context": exam.context or "No context available.",
+                "grade": f"{int(exam.score or 0)} / 100",
+                "xpAwarded": int(exam.xp_gained or 0),
+            }
+        )
+
+    return payload
+
+
+def _serialize_student_dashboard(student: User) -> dict:
+    """Build the complete Student dashboard payload.
+
+    Args:
+        student: Authenticated student user.
+
+    Returns:
+        A JSON-serializable payload for the Student Home dashboard.
+    """
+    levels = _get_active_levels()
+
+    return {
+        "courseSummary": _serialize_student_course_summary(student),
+        "leaderboards": {
+            "course": _serialize_ranked_leaderboard(
+                students=_get_course_leaderboard_students(student.student_class_id),
+                current_user_id=student.id,
+                levels=levels,
+            ),
+            "global": _serialize_ranked_leaderboard(
+                students=_get_global_leaderboard_students(),
+                current_user_id=student.id,
+                levels=levels,
+            ),
+        },
+        "weeklyXp": _serialize_student_weekly_xp(student.id),
+        "progress": _serialize_student_progress(student, levels),
+        "lastExams": _serialize_student_last_exams(student.id),
+    }
+
+# ---------------------------------------------------------------------------
+# Public controller
+# ---------------------------------------------------------------------------
+
 def home_analytics_controller():
     """Return the Home analytics payload for the authenticated user.
 
     Current behavior:
     - Coordinator: returns the real Coordinator dashboard payload.
-    - Teacher/Student: returns 501 until their analytics are implemented.
+    - Student: returns the real Student dashboard payload
+    - Teacher: returns 501 until their analytics are implemented.
 
     Returns:
         200 with the role-specific dashboard payload.
         403 if the authenticated user is not verified.
         404 if the authenticated user does not exist or was deleted.
         501 for roles not implemented yet.
+        500 for unexpected server errors.
     """
-    user_id = int(get_jwt_identity())
-    user = db.session.get(User, user_id)
+    try:
+        user_id = int(get_jwt_identity())
+        user = db.session.get(User, user_id)
 
-    if not user or user.date_deleted is not None:
-        return jsonify({"message": "User not found."}), 404
+        if not user or user.date_deleted is not None:
+            return jsonify({"message": "User not found."}), 404
 
-    if user.is_verified is False:
-        return jsonify({"message": "Email not verified."}), 403
+        if user.is_verified is False:
+            return jsonify({"message": "Email not verified."}), 403
 
-    if user.type == UserType.COORDINATOR:
+        if user.type == UserType.COORDINATOR:
+            return jsonify(
+                {
+                    "role": user.type.value,
+                    "dashboard": {
+                        "coordinator": _serialize_coordinator_dashboard(),
+                    },
+                }
+            ), 200
+        if user.type == UserType.STUDENT:
+            return jsonify(
+                {
+                    "role": user.type.value,
+                    "dashboard": {
+                        "student": _serialize_student_dashboard(user)
+                    },
+                }
+            ), 200
+
         return jsonify(
             {
-                "role": user.type.value,
-                "dashboard": {
-                    "coordinator": _serialize_coordinator_dashboard(),
-                },
+                "message": (
+                    "Dashboard analytics are not implemented for this role yet."
+                )
             }
-        ), 200
-
-    return jsonify(
-        {"message": "Dashboard analytics are not implemented for this role yet."}
-    ), 501
+        ), 501
+    except SQLAlchemyError as err:
+        return jsonify({"message": f"Database error: {err}"}), 500
+    except Exception as err: # pylint: disable-broad-except
+        return jsonify({"message": f"Unexpected error: {err}"}), 500
