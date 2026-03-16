@@ -21,7 +21,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 
 from orm_models import db, User, Class, Exam, Level
-from utils.types_enum import UserType
+from utils.types_enum import UserType, ExamStatus
 
 LEADERBOARD_LIMIT = 10
 LAST_EXAMS_LIMIT = 5
@@ -557,6 +557,259 @@ def _serialize_student_dashboard(student: User) -> dict:
         "lastExams": _serialize_student_last_exams(student.id),
     }
 
+
+# ---------------------------------------------------------------------------
+# Teacher helpers
+# ---------------------------------------------------------------------------
+
+def _get_teacher_active_classes(teacher: User) -> list[Class]:
+    """Return active classes assigned to the authenticated teacher."""
+    if teacher.type != UserType.TEACHER:
+        return []
+
+    active_classes = [
+        clazz
+        for clazz in (teacher.teacher_classes or []) # type: ignore
+        if clazz.date_deleted is None
+    ]
+
+    return sorted(
+        active_classes,
+        key=lambda clazz: (
+            (clazz.description or "").lower(),
+            (clazz.class_code or "").lower(),
+            clazz.id,
+        ),
+    )
+
+
+def _get_active_verified_students_for_class(class_id: int) -> list[User]:
+    """Return active, verified students enrolled in an active class."""
+    return (
+        User.query
+        .join(Class, Class.id == User.student_class_id)
+        .filter(
+            User.type == UserType.STUDENT,
+            User.student_class_id == class_id,
+            User.date_deleted.is_(None),
+            User.is_verified.is_(True),
+            Class.date_deleted.is_(None),
+        )
+        .all()
+    )
+
+
+def _get_teacher_names_for_class(clazz: Class) -> list[str]:
+    """Return the display names of active verified teachers assigned to a class."""
+    teacher_names = sorted(
+        _build_user_full_name(teacher)
+        for teacher in (clazz.teachers or []) # type: ignore
+        if (
+            teacher.date_deleted is None
+            and teacher.is_verified is True
+            and teacher.type == UserType.TEACHER
+        )
+    )
+
+    return teacher_names or ["Not assigned yet"]
+
+
+def _serialize_teacher_leaderboard(
+    students: list[User],
+    levels: list[Level],
+) -> list[dict]:
+    """Build the class leaderboard payload for the teacher dashboard."""
+    sorted_students = _sort_students_for_leaderboard(students, levels)
+
+    return [
+        {
+            "name": _build_user_full_name(student),
+            "level": _resolve_level_number(int(student.accumulated_xp or 0), levels),
+            "xp": int(student.accumulated_xp or 0),
+        }
+        for student in sorted_students
+    ]
+
+
+def _normalize_sql_date(raw_value) -> date | None:
+    """Normalize DB date/group-by results into a Python date."""
+    if raw_value is None:
+        return None
+
+    if isinstance(raw_value, date):
+        return raw_value
+
+    if isinstance(raw_value, datetime):
+        return raw_value.date()
+
+    try:
+        return datetime.strptime(str(raw_value), "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _serialize_weekly_xp_by_student(
+    students: list[User],
+    levels: list[Level],
+) -> list[dict]:
+    """Build 7-day XP series for each student in the class.
+
+    XP is counted from corrected exams with non-null xp_gained,
+    exactly like the student dashboard.
+    """
+    if not students:
+        return []
+
+    today = date.today()
+    days = [
+        today - timedelta(days=offset)
+        for offset in reversed(range(WEEKLY_XP_DAYS))
+    ]
+
+    student_ids = [student.id for student in students]
+    xp_by_student_and_day: dict[int, dict[date, int]] = {
+        student.id: {day: 0 for day in days}
+        for student in students
+    }
+
+    start_dt = datetime.combine(days[0], time.min)
+    end_dt = datetime.combine(today + timedelta(days=1), time.min)
+
+    rows = (
+        db.session.query(
+            Exam.user_id,
+            func.date(Exam.corrected_at),              # pylint: disable=not-callable
+            func.sum(Exam.xp_gained),                 # pylint: disable=not-callable
+        )
+        .filter(
+            Exam.user_id.in_(student_ids),
+            Exam.date_deleted.is_(None),
+            Exam.corrected_at.isnot(None),
+            Exam.xp_gained.isnot(None),
+            Exam.corrected_at >= start_dt,
+            Exam.corrected_at < end_dt,
+        )
+        .group_by(Exam.user_id, func.date(Exam.corrected_at))
+        .all()
+    )
+
+    for user_id, raw_day, total_xp in rows:
+        normalized_day = _normalize_sql_date(raw_day)
+        if normalized_day is None:
+            continue
+        if user_id in xp_by_student_and_day and normalized_day in xp_by_student_and_day[user_id]:
+            xp_by_student_and_day[user_id][normalized_day] = int(total_xp or 0)
+
+    sorted_students = _sort_students_for_leaderboard(students, levels)
+
+    return [
+        {
+            "name": _build_user_full_name(student),
+            "values": [
+                {
+                    "label": DAY_LABELS[day.weekday()],
+                    "value": xp_by_student_and_day[student.id][day],
+                }
+                for day in days
+            ],
+        }
+        for student in sorted_students
+    ]
+
+
+def _serialize_teacher_exam_queue(
+    class_id: int,
+    statuses: list[str],
+) -> list[dict]:
+    """Serialize teacher exam tables for a class and a set of statuses."""
+    exams = (
+        Exam.query
+        .join(Class, Class.id == Exam.class_id)
+        .filter(
+            Exam.class_id == class_id,
+            Exam.date_deleted.is_(None),
+            Exam.status.in_(statuses),
+            Class.date_deleted.is_(None),
+        )
+        .order_by(Exam.date_created.desc())
+        .all()
+    )
+
+    payload: list[dict] = []
+
+    for exam in exams:
+        payload.append(
+            {
+                "id": exam.id,
+                "generationDate": _format_iso_date(exam.date_created),
+                "context": exam.context or "No context available.",
+                "className": exam.class_exam.description if exam.class_exam else "-",
+            }
+        )
+
+    return payload
+
+
+def _serialize_pending_correction_exams(class_id: int) -> list[dict]:
+    """Build exams pending teacher correction for a class."""
+    return _serialize_teacher_exam_queue(
+        class_id,
+        [ExamStatus.PENDING_CORRECTION.value],
+    )
+
+
+def _serialize_pending_review_exams(class_id: int) -> list[dict]:
+    """Build exams pending coordinator review for a class."""
+    return _serialize_teacher_exam_queue(
+        class_id,
+        [ExamStatus.PENDING_REVIEW.value],
+    )
+
+
+def _serialize_teacher_course_dashboard(
+    clazz: Class,
+    levels: list[Level],
+) -> dict:
+    """Build the teacher dashboard payload for one class."""
+    active_students = _get_active_verified_students_for_class(clazz.id)
+
+    return {
+        "id": clazz.id,
+        "name": clazz.description,
+        "description": (
+            f"{clazz.class_code} course with a suggested English level of "
+            f"{clazz.suggested_level}."
+        ),
+        "teachers": _get_teacher_names_for_class(clazz),
+        "studentsEnrolled": len(active_students),
+        "englishLevel": clazz.suggested_level,
+        "leaderboard": _serialize_teacher_leaderboard(active_students, levels),
+        "weeklyXpByStudent": _serialize_weekly_xp_by_student(
+            active_students,
+            levels,
+        ),
+        "pendingCorrectionExams": _serialize_pending_correction_exams(clazz.id),
+        "pendingReviewExams": _serialize_pending_review_exams(clazz.id),
+    }
+
+
+def _serialize_teacher_dashboard(teacher_id: int) -> dict:
+    """Build the complete Teacher dashboard payload."""
+    teacher = db.session.get(User, teacher_id)
+
+    if not teacher or teacher.date_deleted is not None:
+        return {"courses": []}
+
+    levels = _get_active_levels()
+    teacher_classes = _get_teacher_active_classes(teacher)
+
+    return {
+        "courses": [
+            _serialize_teacher_course_dashboard(clazz, levels)
+            for clazz in teacher_classes
+        ]
+    }
+
 # ---------------------------------------------------------------------------
 # Public controller
 # ---------------------------------------------------------------------------
@@ -601,6 +854,15 @@ def home_analytics_controller():
                     "role": user.type.value,
                     "dashboard": {
                         "student": _serialize_student_dashboard(user)
+                    },
+                }
+            ), 200
+        if user.type == UserType.TEACHER:
+            return jsonify(
+                {
+                    "role": user.type.value,
+                    "dashboard": {
+                        "teacher": _serialize_teacher_dashboard(user.id),
                     },
                 }
             ), 200
