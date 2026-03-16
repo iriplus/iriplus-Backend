@@ -8,7 +8,8 @@ so each endpoint declares its full public path explicitly.
 
 from flask import Blueprint
 from flask_jwt_extended import jwt_required
-from controllers.analytics_controller import home_analytics_controller
+from controllers.analytics_controller import home_analytics_controller, tuition_analytics_controller
+from utils.decorators import roles_required, UserType
 
 analytics_bp = Blueprint("analytics", __name__)
 
@@ -50,3 +51,36 @@ def get_home_analytics():
         description: Server error
     """
     return home_analytics_controller()
+
+@analytics_bp.get("/api/tuitions/analytics")
+@roles_required(UserType.COORDINATOR)
+def get_tuition_analytics():
+    """
+    Return the Tuition dashboard analytics for the authenticated user.
+
+    Only Coordinators are allowed to access this endpoint.
+
+    Returns:
+        The result of tuition_analytics_controller(), including:
+        - 200 with the tuition analytics payload
+        - 403 if the user is not verified or is not a Coordinator
+        - 404 if the user does not exist or is soft-deleted
+    ---
+    tags:
+      - Analytics
+    summary: Get Tuition dashboard analytics
+    description: >
+      Returns the analytics required by the Coordinator Tuition screen,
+      including summary status distribution, students with 3 or more months
+      overdue, and the full student tuition table.
+    responses:
+      200:
+        description: Tuition analytics loaded successfully
+      403:
+        description: Email not verified or user not authorized
+      404:
+        description: User not found
+      500:
+        description: Server error
+    """
+    return tuition_analytics_controller()
