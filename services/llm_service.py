@@ -395,3 +395,74 @@ def generate_student_correction_from_llm(prompt: str) -> str:
     response.raise_for_status()
 
     return response.json()["response"]
+
+def build_writing_feedback_prompt(
+    exercise_prompt: str,
+    student_submission: str,
+) -> str:
+    """
+    Build the prompt used to review a student's writing submission.
+
+    Output must be strict JSON only.
+    Feedback explanations must be in English.
+    Corrected writing must remain in English.
+    """
+    return f"""
+You are an expert Cambridge English writing evaluator and teacher.
+
+Your task is to analyze a student's English writing submission and return:
+- observations
+- corrections
+- improvement tips
+- an improved corrected version of the text
+
+Important behavior rules:
+- Evaluate the student's response against the exercise prompt.
+- Be constructive, pedagogical, and specific.
+- Do not invent missing student intentions.
+- Preserve the student's original meaning when correcting.
+- Do not be overly harsh.
+- Feedback explanations must be written in English.
+- Any corrected writing text must remain in English.
+- Output STRICT JSON only.
+- Do NOT include markdown.
+- Do NOT include explanations outside JSON.
+
+Exercise prompt:
+{exercise_prompt}
+
+Student submission:
+{student_submission}
+
+Return JSON with this exact schema:
+
+{{
+  "overall_assessment": "string",
+  "corrected_version": "string",
+  "feedback": {{
+    "task_achievement": ["string"],
+    "grammar": ["string"],
+    "vocabulary": ["string"],
+    "organization": ["string"]
+  }},
+  "line_corrections": [
+    {{
+      "original": "string",
+      "corrected": "string",
+      "explanation": "string"
+    }}
+  ],
+  "tips": ["string"],
+  "estimated_level_fit": "string"
+}}
+
+Additional instructions:
+- "overall_assessment" should be a short paragraph in English.
+- "corrected_version" must be the full corrected version of the student's text in English.
+- "feedback" must contain practical observations in English.
+- "line_corrections" must include the most important concrete corrections only.
+- Include between 3 and 8 items in "line_corrections" when possible.
+- "tips" must be actionable and concise, in English.
+- "estimated_level_fit" should briefly state whether the writing seems below, aligned with, or above its apparent level.
+- If the text is very short, still provide useful feedback.
+"""
