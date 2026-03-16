@@ -24,6 +24,7 @@ from routes.test_mail import test_mail_bp
 from routes.exercise_routes import exercise_bp
 from routes.tuition_routes import tuition_bp
 from routes.analytics_routes import analytics_bp
+from routes.writing_routes import writing_bp
 from swagger.config import swagger_config
 from swagger.template import swagger_template
 from extensions.mail_extension import mail
@@ -132,6 +133,7 @@ app.register_blueprint(exercise_bp)
 app.register_blueprint(test_mail_bp)
 app.register_blueprint(tuition_bp)
 app.register_blueprint(analytics_bp)
+app.register_blueprint(writing_bp)
 
 
 
