@@ -26,6 +26,7 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from orm_models import User, db
 from extensions.mail_extension import mail
 from utils.brevo_mail import send_brevo_email
+from utils.email_utils import _build_email_layout
 from utils.types_enum import UserType
 from services.captcha_service import verify_captcha
 from controllers.user_controller import serialize_user
@@ -293,11 +294,34 @@ def send_reset_code_controller():
         key = reset_code_key(normalized)
         redis_client.setex(key, ttl_seconds, code)
 
-        html = f"""
-        <p>Your password recovery code is:</p>
-        <h2>{code}</h2>
-        <p>It expires in {ttl_seconds // 60} minutes.</p>
+        minutes = ttl_seconds // 60
+
+        content_html = f"""
+        <p style="margin:0 0 14px 0;color:#111111;font-size:16px;line-height:1.6;">
+            Use the following code to reset your password:
+        </p>
+
+        <div style="
+            margin:20px 0;
+            font-size:28px;
+            font-weight:700;
+            letter-spacing:4px;
+            color:#1a3a21;
+        ">
+            {code}
+        </div>
+
+        <p style="margin:0 0 24px 0;color:#6c757d;font-size:15px;line-height:1.6;">
+            This code expires in {minutes} minutes.
+        </p>
         """
+
+        html = _build_email_layout(
+            title="Password Recovery",
+            greeting="Hello,",
+            content_html=content_html,
+            footer="If you did not request a password reset, you can ignore this email.",
+        )
 
         send_brevo_email(
             to_email=normalized,
