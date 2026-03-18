@@ -30,6 +30,8 @@ from utils.email_utils import _build_email_layout
 from utils.types_enum import UserType
 from services.captcha_service import verify_captcha
 from controllers.user_controller import serialize_user
+from urllib.parse import urlencode
+from flask import redirect
 
 
 # ----------------------------------------------------------
@@ -225,37 +227,29 @@ def logout_controller():
 # ----------------------------------------------------------
 # VERIFICAR EMAIL
 # ----------------------------------------------------------
+def _frontend_redirect(path: str, **params):
+    base = os.getenv("FRONTEND_REDIRECT_URL", "http://localhost:4200").rstrip("/")
+    query = urlencode(params)
+    return redirect(f"{base}{path}?{query}" if query else f"{base}{path}")
 
 def verify_email_controller(token: str):
-    """
-    Verify a user's email address based on a signed token.
-
-    Args:
-        token: The token included in the verification URL.
-
-    Returns:
-        200 OK if the email was successfully verified.
-        400 if the token is invalid or expired.
-        404 if no user matches the decoded email address.
-    """
     email = confirm_verification_token(token)
 
     if not email:
-        return jsonify({"msg": "Invalid or expired token"}), 400
+        return _frontend_redirect("/login", verified="invalid")
 
     user = User.query.filter_by(email=email).first()
 
     if not user or user.date_deleted is not None:
-        return jsonify({"msg": "User not found"}), 404
+        return _frontend_redirect("/login", verified="not-found")
 
     if user.is_verified:
-        return jsonify({"msg": "Email already verified"}), 200
+        return _frontend_redirect("/login", verified="already")
 
     user.is_verified = True
     db.session.commit()
 
-    return jsonify({"msg": "Email verified successfully"}), 200
-
+    return _frontend_redirect("/login", verified="success")
 # ----------------------------------------------------------
 # SEND CODE FOR PASSWORD RESET
 # ----------------------------------------------------------

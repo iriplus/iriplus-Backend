@@ -61,24 +61,24 @@ def send_welcome_email(email: str, name: str, token: str):
 
     content_html = f"""
     <p style="margin:0 0 24px 0;color:#6c757d;font-size:15px;line-height:1.6;">
-      ¡Bienvenido a IRI+! Para activar tu cuenta hacé clic en el botón.
+      ¡Welcome to IRI+! To activate your account, click on the button.
     </p>
 
     <a href="{verification_link}" style="display:inline-block;background:linear-gradient(135deg,#27532f,#1a3a21);color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:999px;font-weight:600;font-size:15px;">
-      Verificar mi correo
+      Verify my email
     </a>
     """
 
     html = _build_email_layout(
-        title="Verificá tu correo",
-        greeting=f"Hola {name},",
+        title="Verify your email",
+        greeting=f"Hi {name},",
         content_html=content_html,
-        footer="Si no creaste una cuenta, podés ignorar este correo.",
+        footer="If you haven't created an account, you can ignore this email.",
     )
 
     send_brevo_email(
         to_email=email,
-        subject="¡Bienvenido a IRI+! Verificá tu correo",
+        subject="Welcome to IRI+! Verify your email",
         html_content=html,
     )
 
