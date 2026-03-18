@@ -1526,6 +1526,7 @@ def submit_student_exam(exam_id: int):
             student=student,
             xp_gained=xp_gained,
         )
+        leveled_up = previous_level_id != new_level_id
 
         exam.student_submitted_at = datetime.datetime.now()
         exam.corrected_at = datetime.datetime.now()
@@ -1538,7 +1539,8 @@ def submit_student_exam(exam_id: int):
             "xp_gained": xp_gained,
             "student_accumulated_xp": new_accumulated_xp,
             "previous_level_id": previous_level_id,
-            "new_level_id": new_level_id
+            "new_level_id": new_level_id,
+            "leveled_up": leveled_up
         })
 
         exam.status = ExamStatus.SOLVED.value
