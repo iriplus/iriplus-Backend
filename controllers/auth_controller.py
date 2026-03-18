@@ -415,3 +415,73 @@ def reset_password_controller():
     redis_client.delete(verification_key)
 
     return jsonify({"msg": "password updated"}), 200
+
+def change_password_controller():
+    """
+    Change the password of the authenticated user.
+
+    Expected JSON body:
+        {
+            "currentPassword": "<string>",
+            "newPassword": "<string>"
+        }
+
+    Requires:
+        A valid JWT access token in an HttpOnly cookie.
+
+    Returns:
+        200 OK if password was updated successfully.
+        400 if request is invalid or new password is too short.
+        401 if current password is incorrect.
+        404 if user is not found.
+    """
+    user_id = get_jwt_identity()
+    data = request.get_json(silent=True) or {}
+
+    current_password = data.get("currentPassword")
+    new_password = data.get("newPassword")
+
+    if not isinstance(current_password, str) or not isinstance(new_password, str):
+        return jsonify({"msg": "Invalid request"}), 400
+
+    current_password = current_password.strip()
+    new_password = new_password.strip()
+
+    if not current_password or not new_password:
+        return jsonify({"msg": "All password fields are required"}), 400
+
+    if len(new_password) < 8:
+        return jsonify({"msg": "Password must be at least 8 characters long"}), 400
+
+    user = db.session.get(User, user_id)
+
+    if not user or user.date_deleted is not None:
+        return jsonify({"msg": "User not found"}), 404
+
+    if user.is_verified is False:
+        return jsonify({"msg": "Email not verified"}), 403
+
+    if not isinstance(user.passwd, str):
+        return jsonify({"msg": "Invalid user password"}), 400
+
+    if not bcrypt.checkpw(
+        current_password.encode("utf-8"),
+        user.passwd.encode("utf-8")
+    ):
+        return jsonify({"msg": "Current password is incorrect"}), 401
+
+    if bcrypt.checkpw(
+        new_password.encode("utf-8"),
+        user.passwd.encode("utf-8")
+    ):
+        return jsonify({"msg": "New password must be different from the current password"}), 400
+
+    hashed = bcrypt.hashpw(
+        new_password.encode("utf-8"),
+        bcrypt.gensalt()
+    ).decode("utf-8")
+
+    user.passwd = hashed
+    db.session.commit()
+
+    return jsonify({"msg": "Password updated successfully"}), 200

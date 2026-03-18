@@ -16,7 +16,8 @@ from controllers.auth_controller import (
     reset_password_controller,
     verify_email_controller,
     send_reset_code_controller,
-    verify_reset_code_controller
+    verify_reset_code_controller,
+    change_password_controller
 )
 
 auth_bp = Blueprint("auth", __name__)
@@ -225,3 +226,8 @@ def forgot_password_reset():
         description: Server error
     """
     return reset_password_controller()
+
+@auth_bp.post("/api/change-password")
+@jwt_required()
+def change_password():
+    return change_password_controller()
