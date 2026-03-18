@@ -1,93 +1,186 @@
-"""Controller functions for Exercise entity.
+"""Controller logic for Exercise entity.
 
-Exposes CRUD-like operations that are typically called from route handlers.
-Each function reads request data, interacts with the ORM, and returns a JSON
-response with an appropriate HTTP status code.
+This module contains the business logic for creating, reading, updating,
+and soft-deleting Exercise records.
+
+Important:
+    In this application, Exercise represents an exercise type/archetype
+    that can later be reused in exam generation workflows. It does not
+    represent a concrete generated question instance.
 """
 
 import datetime
-from flask import request, jsonify
+from typing import Any
+
+from flask import jsonify, request
+from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
-from orm_models import db, Exercise
-from utils.types_enum import ExerciseArchetype
+
+from orm_models import Exercise, db
 
 
-def _serialize_exercise(exercise: Exercise) -> dict:
-    """Serialize an Exercise ORM object to a JSON-safe dict.
+def _serialize_exercise(exercise: Exercise) -> dict[str, Any]:
+    """Serialize an Exercise ORM object into a JSON-safe dictionary.
 
     Args:
         exercise: Exercise model instance.
 
     Returns:
-        A dictionary with primitive/JSON-serializable values.
+        Dictionary with primitive values ready to be returned as JSON.
     """
     return {
         "id": exercise.id,
-        "date_created": exercise.date_created.isoformat() if exercise.date_created else None,
         "name": exercise.name,
-        "content_description": exercise.content_description
+        "content_description": exercise.content_description,
+        "date_created": (
+            exercise.date_created.isoformat()
+            if exercise.date_created is not None
+            else None
+        ),
     }
 
 
-def create_exercise(exercise_archetype: ExerciseArchetype):
-    """Create an Exercise record from the JSON request body.
+def _validate_string_field(value: Any, field_name: str) -> str:
+    """Validate that a payload field is a non-empty string.
 
-    Expected JSON fields:
-        - name (str)
-        - content_description (text)
-    
+    Args:
+        value: Raw field value extracted from the request JSON body.
+        field_name: Human-readable field name used in error messages.
+
     Returns:
-        JSON payload with the new resource id on success, or an error message.
+        The normalized trimmed string value.
+
+    Raises:
+        ValueError: If the value is not a valid non-empty string.
+    """
+    if not isinstance(value, str):
+        raise ValueError(f"Field '{field_name}' must be a string.")
+
+    normalized_value = value.strip()
+
+    if not normalized_value:
+        raise ValueError(f"Field '{field_name}' is required.")
+
+    return normalized_value
+
+
+def _validate_exercise_payload(data: dict[str, Any]) -> tuple[str, str]:
+    """Validate and normalize Exercise payload data.
+
+    Expected payload:
+        {
+            "name": "<string>",
+            "content_description": "<string>"
+        }
+
+    Args:
+        data: Parsed JSON request body.
+
+    Returns:
+        Tuple containing normalized (name, content_description).
+
+    Raises:
+        ValueError: If one or more fields are invalid.
+    """
+    name = _validate_string_field(data.get("name"), "name")
+    content_description = _validate_string_field(
+        data.get("content_description"),
+        "content_description",
+    )
+
+    if len(name) > 255:
+        raise ValueError("Field 'name' must not exceed 255 characters.")
+
+    return name, content_description
+
+
+def _find_exercise_by_name(name: str) -> Exercise | None:
+    """Find an Exercise by name using a case-insensitive lookup.
+
+    Args:
+        name: Exercise type name to search for.
+
+    Returns:
+        Matching Exercise instance if found, otherwise None.
+    """
+    return (
+        db.session.query(Exercise)
+        .filter(func.lower(Exercise.name) == name.lower())
+        .first()
+    )
+
+
+def create_exercise():
+    """Create a new Exercise type from the JSON request body.
+
+    Returns:
+        201 with the created Exercise payload on success.
+        400 if the JSON body or fields are invalid.
+        409 if the name already exists.
+        500 if an unexpected database/server error occurs.
     """
     data = request.get_json(silent=True)
-    if not data:
+    if not isinstance(data, dict):
         return jsonify({"message": "Invalid JSON body"}), 400
 
     try:
-        archetype_enum = exercise_archetype
-        content = data["content"]
-        rubric = data["rubric"]
-        key = data["key"]
-        exam_id = data["exam_id"]
+        name, content_description = _validate_exercise_payload(data)
 
-        new_exercise = Exercise(
-            archetype=archetype_enum.value,
-            content=content,
-            rubric=rubric,
-            key=key,
-            exam_id=exam_id,
-            date_created=datetime.datetime.now(),
+        existing_exercise = _find_exercise_by_name(name)
+        if existing_exercise is not None:
+            if existing_exercise.date_deleted is None:
+                return jsonify({
+                    "message": "An active exercise type with this name already exists."
+                }), 409
+
+            return jsonify({
+                "message": (
+                    "An exercise type with this name already exists but was "
+                    "previously deleted. Reusing the same name is not allowed "
+                    "with the current database constraint."
+                )
+            }), 409
+
+        exercise = Exercise(
+            name=name,
+            content_description=content_description,
         )
 
-        db.session.add(new_exercise)
+        db.session.add(exercise)
         db.session.commit()
 
-        return jsonify(
-            {"message": "Exercise created successfully", "id": new_exercise.id}
-        ), 201
+        return jsonify(_serialize_exercise(exercise)), 201
 
-    except KeyError as err:
-        # Missing required field in the payload.
-        return jsonify({"message": f"Missing required field: {err}"}), 400
-    except (TypeError, ValueError) as err:
-        # Invalid types (e.g., non-numeric max_capacity).
-        return jsonify({"message": f"Invalid field value: {err}"}), 400
+    except ValueError as err:
+        return jsonify({"message": str(err)}), 400
     except SQLAlchemyError as err:
-        # Database/transaction error (log 'err' detail in real apps).
         db.session.rollback()
         return jsonify({"message": f"Database error: {err}"}), 500
     except Exception as err:  # pylint: disable=broad-except
-        # Catch-all for unexpected errors.
         db.session.rollback()
         return jsonify({"message": f"Something went wrong: {err}"}), 500
 
 
 def get_all_exercises():
-    """Return all non-deleted types of exercises as a JSON array."""
+    """Return all active Exercise types.
+
+    Active means records whose ``date_deleted`` is None.
+
+    Returns:
+        200 with a JSON array of active Exercise types.
+        500 if a database/server error occurs.
+    """
     try:
-        exercises = Exercise.query.filter_by(date_deleted=None).all()
+        exercises = (
+            db.session.query(Exercise)
+            .filter(Exercise.date_deleted.is_(None))
+            .order_by(Exercise.date_created.desc(), Exercise.id.desc())
+            .all()
+        )
+
         result = [_serialize_exercise(exercise) for exercise in exercises]
         return jsonify(result), 200
+
     except SQLAlchemyError as err:
         return jsonify({"message": f"Database error: {err}"}), 500
     except Exception as err:  # pylint: disable=broad-except
@@ -95,20 +188,24 @@ def get_all_exercises():
 
 
 def get_exercise_by_id(exercise_id: int):
-    """Return a single Exercise by id if it exists and is not soft-deleted.
+    """Return a single active Exercise by its identifier.
 
     Args:
         exercise_id: Primary key of the Exercise.
 
     Returns:
-        JSON object with the exercise data or a 404 error if not found.
+        200 with the Exercise payload if found and active.
+        404 if the Exercise does not exist or was soft-deleted.
+        500 if a database/server error occurs.
     """
     try:
-        exercise = Exercise.query.get(exercise_id)
-        if not exercise or exercise.date_deleted:
-            return jsonify({"message": "Exercise not found"}), 404
+        exercise = db.session.get(Exercise, exercise_id)
+
+        if exercise is None or exercise.date_deleted is not None:
+            return jsonify({"message": "Exercise type not found"}), 404
 
         return jsonify(_serialize_exercise(exercise)), 200
+
     except SQLAlchemyError as err:
         return jsonify({"message": f"Database error: {err}"}), 500
     except Exception as err:  # pylint: disable=broad-except
@@ -116,35 +213,63 @@ def get_exercise_by_id(exercise_id: int):
 
 
 def update_exercise(exercise_id: int):
-    """Update mutable fields of an existing Exercise.
+    """Update mutable fields of an existing active Exercise.
 
     Args:
         exercise_id: Primary key of the Exercise to update.
 
     Returns:
-        JSON with a success message or an error status/message.
+        200 with the updated Exercise payload on success.
+        400 if the JSON body or fields are invalid.
+        404 if the Exercise does not exist or was soft-deleted.
+        409 if the requested new name already exists.
+        500 if a database/server error occurs.
     """
-    exercise = Exercise.query.get(exercise_id)
-    if not exercise or exercise.date_deleted:
-        return jsonify({"message": "Exercise not found"}), 404
+    exercise = db.session.get(Exercise, exercise_id)
+
+    if exercise is None or exercise.date_deleted is not None:
+        return jsonify({"message": "Exercise type not found"}), 404
 
     data = request.get_json(silent=True)
-    if not data:
+    if not isinstance(data, dict):
         return jsonify({"message": "Invalid JSON body"}), 400
 
     try:
-        # Only overwrite fields present in the payload; keep current values otherwise.
-        exercise.archetype = data.get("archetype", exercise.archetype)
-        exercise.content = data.get("content", exercise.content)
-        exercise.rubric = data.get("rubric", exercise.rubric)
-        exercise.key = data.get("key", exercise.key)
+        merged_payload = {
+            "name": data.get("name", exercise.name),
+            "content_description": data.get(
+                "content_description",
+                exercise.content_description,
+            ),
+        }
+
+        name, content_description = _validate_exercise_payload(merged_payload)
+
+        existing_exercise = _find_exercise_by_name(name)
+        if existing_exercise is not None and existing_exercise.id != exercise.id:
+            if existing_exercise.date_deleted is None:
+                return jsonify({
+                    "message": "An active exercise type with this name already exists."
+                }), 409
+
+            return jsonify({
+                "message": (
+                    "An exercise type with this name already exists but was "
+                    "previously deleted. Reusing the same name is not allowed "
+                    "with the current database constraint."
+                )
+            }), 409
+
+        exercise.name = name
+        exercise.content_description = content_description
 
         db.session.commit()
-        return jsonify({"message": "Exercise updated successfully"}), 200
 
-    except (TypeError, ValueError) as err:
+        return jsonify(_serialize_exercise(exercise)), 200
+
+    except ValueError as err:
         db.session.rollback()
-        return jsonify({"message": f"Invalid field value: {err}"}), 400
+        return jsonify({"message": str(err)}), 400
     except SQLAlchemyError as err:
         db.session.rollback()
         return jsonify({"message": f"Database error: {err}"}), 500
@@ -153,28 +278,33 @@ def update_exercise(exercise_id: int):
         return jsonify({"message": f"Something went wrong: {err}"}), 500
 
 
-def delete_exercise(exercise_id: int):
-    """Soft-delete an Exercise by setting the date_deleted timestamp.
+def soft_delete_exercise(exercise_id: int):
+    """Soft-delete an Exercise by setting ``date_deleted``.
 
     Args:
         exercise_id: Primary key of the Exercise to soft-delete.
 
     Returns:
-        JSON with a success message, or 404 if the class does not exist.
+        200 with a success message on success.
+        404 if the Exercise does not exist or was already deleted.
+        500 if a database/server error occurs.
     """
-    exercise = Exercise.query.get(exercise_id)
-    if not exercise or exercise.date_deleted:
-        return jsonify({"message": "Exercise not found"}), 404
+    exercise = db.session.get(Exercise, exercise_id)
+
+    if exercise is None or exercise.date_deleted is not None:
+        return jsonify({"message": "Exercise type not found"}), 404
 
     try:
-        # Soft delete by timestamp; keep record for audit and FK integrity.
         exercise.date_deleted = datetime.datetime.now()
         db.session.commit()
-        return jsonify({"message": "Exercise deleted successfully"}), 200
+
+        return jsonify({
+            "message": f"Exercise type {exercise.id} deleted successfully"
+        }), 200
 
     except SQLAlchemyError as err:
         db.session.rollback()
         return jsonify({"message": f"Database error: {err}"}), 500
     except Exception as err:  # pylint: disable=broad-except
         db.session.rollback()
-        return jsonify({"message": {f"Something went wrong: {err}"}}), 500
+        return jsonify({"message": f"Something went wrong: {err}"}), 500

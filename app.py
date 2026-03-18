@@ -135,8 +135,6 @@ app.register_blueprint(tuition_bp)
 app.register_blueprint(analytics_bp)
 app.register_blueprint(writing_bp)
 
-
-
 # ----------------------------------------------------------------------------
 # Database init
 # ----------------------------------------------------------------------------
