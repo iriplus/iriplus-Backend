@@ -18,12 +18,9 @@ from datetime import datetime, timedelta, date, time
 from flask import jsonify
 from flask_jwt_extended import get_jwt_identity
 from sqlalchemy import func
-from calendar import month_name
-from datetime import date
-from typing import Any
-from orm_models import db, User, Class
 from sqlalchemy.exc import SQLAlchemyError
-
+from calendar import month_name
+from typing import Any
 from orm_models import db, User, Class, Exam, Level
 from utils.types_enum import UserType, ExamStatus
 
@@ -249,6 +246,67 @@ def _resolve_next_level_xp(accumulated_xp: int, levels: list[Level]) -> int:
 
     return accumulated_xp
 
+def _resolve_class_display_name(clazz: Class | None) -> str:
+    """Return the preferred display name for a class."""
+    if clazz is None or clazz.date_deleted is not None:
+        return "-"
+
+    if isinstance(clazz.description, str) and clazz.description.strip():
+        return clazz.description.strip()
+
+    if isinstance(clazz.class_code, str) and clazz.class_code.strip():
+        return clazz.class_code.strip()
+
+    return "-"
+
+
+def _resolve_current_level(accumulated_xp: int, levels: list[Level]) -> Level | None:
+    """Return the current Level ORM instance for the given XP."""
+    current_level: Level | None = None
+
+    for level in levels:
+        if accumulated_xp >= int(level.min_xp):
+            current_level = level
+        else:
+            break
+
+    return current_level
+
+
+def _resolve_next_level(accumulated_xp: int, levels: list[Level]) -> Level | None:
+    """Return the next Level ORM instance for the given XP."""
+    for level in levels:
+        if accumulated_xp < int(level.min_xp):
+            return level
+
+    return None
+
+
+def _resolve_level_name(accumulated_xp: int, levels: list[Level]) -> str:
+    """Return the display name of the current level."""
+    current_level = _resolve_current_level(accumulated_xp, levels)
+
+    if current_level is None:
+        return "Unranked"
+
+    if isinstance(current_level.description, str) and current_level.description.strip():
+        return current_level.description.strip()
+
+    return f"Level {current_level.id}"
+
+
+def _resolve_next_level_name(accumulated_xp: int, levels: list[Level]) -> str | None:
+    """Return the display name of the next level."""
+    next_level = _resolve_next_level(accumulated_xp, levels)
+
+    if next_level is None:
+        return None
+
+    if isinstance(next_level.description, str) and next_level.description.strip():
+        return next_level.description.strip()
+
+    return f"Level {next_level.id}"
+
 
 def _serialize_student_course_summary(student: User) -> dict:
     """Build the student's current course summary.
@@ -291,7 +349,7 @@ def _serialize_student_course_summary(student: User) -> dict:
     return {
         "name": clazz.description,
         "description": (
-            f"{clazz.class_code} course with a suggested English level of "
+            f"{clazz.description} course with a suggested English level of "
             f"{clazz.suggested_level}."
         ),
         "teachers": teacher_names,
@@ -352,6 +410,7 @@ def _serialize_ranked_leaderboard(
             "rank": index,
             "name": _build_user_full_name(student),
             "level": _resolve_level_number(accumulated_xp, levels),
+            "levelName": _resolve_level_name(accumulated_xp, levels),
             "xp": accumulated_xp,
             "isCurrentUser": student.id == current_user_id,
         }
@@ -484,8 +543,10 @@ def _serialize_student_progress(student: User, levels: list[Level]) -> dict:
 
     return {
         "currentLevel": _resolve_level_number(current_xp, levels),
+        "currentLevelName": _resolve_level_name(current_xp, levels),
         "currentXp": current_xp,
         "nextLevelXp": _resolve_next_level_xp(current_xp, levels),
+        "nextLevelName": _resolve_next_level_name(current_xp, levels)
     }
 
 
@@ -638,6 +699,7 @@ def _serialize_teacher_leaderboard(
         {
             "name": _build_user_full_name(student),
             "level": _resolve_level_number(int(student.accumulated_xp or 0), levels),
+            "levelName": _resolve_level_name(int(student.accumulated_xp or 0), levels),
             "xp": int(student.accumulated_xp or 0),
         }
         for student in sorted_students
@@ -790,7 +852,7 @@ def _serialize_teacher_course_dashboard(
         "id": clazz.id,
         "name": clazz.description,
         "description": (
-            f"{clazz.class_code} course with a suggested English level of "
+            f"{clazz.description} course with a suggested English level of "
             f"{clazz.suggested_level}."
         ),
         "teachers": _get_teacher_names_for_class(clazz),
