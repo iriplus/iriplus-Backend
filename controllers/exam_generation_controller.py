@@ -37,6 +37,7 @@ from services.generic_context_service import get_random_generic_context
 from utils.types_enum import ExamStatus
 from utils.exam_xp import calculate_exam_xp, resolve_level_from_xp, apply_exam_xp_to_student
 from utils.mpreg_utils import predict_next_student_score, get_difficulty_band
+from services.exam_fallback_service import ExamFallbackService
 
 
 def extract_json(text: str) -> str:
@@ -126,79 +127,90 @@ def generate_exam():
         db.session.flush()  # ensures new_exam.id exists
 
         # ------------------------
-        # RAG Phase
+        # Generation Flow / Fallback
         # ------------------------
         level = class_obj.suggested_level
 
-        exercise_list_text = "\n".join(
-            [f"- {ex.name}: {ex.content_description}" for ex in exercise_types]
-        )
-
-        contexts = retrieve_course_context(
-            course_id=class_obj.description,
-            level=level,
-            exercises_description=exercise_list_text,
-        )
-
-        retrieved_context_text = "\n\n---\n\n".join(contexts)
-
-        # ------------------------
-        # LLM Phase
-        # ------------------------
-        prompt = build_prompt(
-            level=level,
-            teacher_text=context,
-            exercise_list_text=exercise_list_text,
-            retrieved_context=retrieved_context_text,
-        )
-
-        raw_output = generate_exam_from_llm(prompt)
-
-        #print("----- MODEL RAW OUTPUT -----")
-        #print(raw_output)
-        #print("----- END MODEL OUTPUT -----")
-
-        # ------------------------
-        # Validate JSON
-        # ------------------------
         try:
+            # ------------------------
+            # RAG Phase
+            # ------------------------
+            exercise_list_text = "\n".join(
+                [f"- {ex.name}: {ex.content_description}" for ex in exercise_types]
+            )
+
+            contexts = retrieve_course_context(
+                course_id=class_obj.description,
+                level=level,
+                exercises_description=exercise_list_text,
+            )
+
+            retrieved_context_text = "\n\n---\n\n".join(contexts)
+
+            # ------------------------
+            # LLM Phase
+            # ------------------------
+            prompt = build_prompt(
+                level=level,
+                teacher_text=context,
+                exercise_list_text=exercise_list_text,
+                retrieved_context=retrieved_context_text,
+            )
+
+            raw_output = generate_exam_from_llm(prompt)
+
+            #print("----- MODEL RAW OUTPUT -----")
+            #print(raw_output)
+            #print("----- END MODEL OUTPUT -----")
+
             cleaned_json = extract_json(raw_output)
             parsed_output = json.loads(cleaned_json)
-            for exercise_block in parsed_output["exercises"]:
-                exercise_name = exercise_block["exercise_type"]
 
-                # buscar el exercise type en BD
-                exercise_type = Exercise.query.filter(
-                    db.func.lower(Exercise.name) == exercise_name.lower()
-                ).first()
+            if "exercises" not in parsed_output:
+                raise ValueError("Invalid exam structure returned by model")
 
-                if not exercise_type:
-                    db.session.rollback()
-                    return jsonify({
-                        "message": f"Exercise type '{exercise_name}' not found in catalog"
-                    }), 400
-
-                instance = ExamExerciseInstance(
-                    exam_id=new_exam.id,
-                    exercise_type_id=exercise_type.id,
-                    instructions=exercise_block["instructions"],
-                    content_json=json.dumps(exercise_block["items"]),
-                    answer_key_json=json.dumps({
-                        "answers": [
-                            item["answer"] for item in exercise_block["items"]
-                        ]
-                    })
-                )
-                db.session.add(instance)
         except Exception as err:
-            db.session.rollback()
-            print('Model error', err)
-            return jsonify({"message": "Model did not return valid JSON"}), 500
-        # Optional: minimal structural validation
-        if "exercises" not in parsed_output:
-            print('Invalid exam structure')
-            db.session.rollback()
-            return jsonify({"message": "Invalid exam structure returned by model"}), 500
+            print("Generation flow failed, using fallback:", err)
+
+            parsed_output = ExamFallbackService.build_exam_payload(
+                level=level,
+                exercise_types=exercise_types,
+            )
+
+            raw_output = ExamFallbackService.build_snapshot(
+                reason=str(err),
+                payload=parsed_output,
+            )
+
+        # ------------------------
+        # Persist Exercise Instances
+        # ------------------------
+        for exercise_block in parsed_output["exercises"]:
+            exercise_name = exercise_block["exercise_type"]
+
+            # buscar el exercise type en BD
+            exercise_type = Exercise.query.filter(
+                db.func.lower(Exercise.name) == exercise_name.lower()
+            ).first()
+
+            if not exercise_type:
+                db.session.rollback()
+                return jsonify({
+                    "message": f"Exercise type '{exercise_name}' not found in catalog"
+                }), 400
+
+            instance = ExamExerciseInstance(
+                exam_id=new_exam.id,
+                exercise_type_id=exercise_type.id,
+                instructions=exercise_block["instructions"],
+                content_json=json.dumps(exercise_block["items"]),
+                answer_key_json=json.dumps({
+                    "answers": ExamFallbackService.extract_answers(
+                        exercise_block["items"]
+                    )
+                })
+            )
+            db.session.add(instance)
 
         # ------------------------
         # Persist Results
