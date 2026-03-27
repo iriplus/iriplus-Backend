@@ -34,6 +34,7 @@ from orm_models import db, Exam, Class, Exercise, ExamExerciseInstance, User
 from services.rag_service import retrieve_course_context
 from services.llm_service import build_prompt, generate_exam_from_llm, build_refinement_prompt, build_student_prompt, build_student_correction_prompt, generate_student_correction_from_llm
 from services.generic_context_service import get_random_generic_context
+from utils.email_utils import send_exam_accepted_email_to_teacher, send_exam_corrected_email_to_coordinator, send_exam_on_review_email_to_teacher, send_exam_sent_to_correction_email_to_teacher
 from utils.types_enum import ExamStatus
 from utils.exam_xp import calculate_exam_xp, resolve_level_from_xp, apply_exam_xp_to_student
 from utils.mpreg_utils import predict_next_student_score, get_difficulty_band
@@ -815,6 +816,13 @@ def set_exam_on_review(exam_id: int):
         exam.status = ExamStatus.ON_REVIEW.value
         db.session.commit()
 
+        try:
+            exam_with_relations = _get_exam_with_users_and_class(exam.id)
+            if exam_with_relations:
+                send_exam_on_review_email_to_teacher(exam_with_relations)
+        except Exception as mail_err:
+            print(f"Failed to send On Review email: {mail_err}")
+
         return jsonify({"message": "Moved to On Review"}), 200
 
     except Exception as e:
@@ -890,6 +898,13 @@ def accept_exam(exam_id: int):
         exam.status = ExamStatus.ACCEPTED.value
         db.session.commit()
 
+        try:
+            exam_with_relations = _get_exam_with_users_and_class(exam.id)
+            if exam_with_relations:
+                send_exam_accepted_email_to_teacher(exam_with_relations)
+        except Exception as mail_err:
+            print(f"Failed to send accepted exam email: {mail_err}")
+
         return jsonify({"message": "Exam accepted"}), 200
 
     except Exception as e:
@@ -910,6 +925,14 @@ def send_to_correction(exam_id: int):
     exam.notes = data.get("notes")
 
     db.session.commit()
+
+    try:
+        exam_with_relations = _get_exam_with_users_and_class(exam.id)
+        if exam_with_relations:
+            send_exam_sent_to_correction_email_to_teacher(exam_with_relations)
+    except Exception as mail_err:
+        print(f"Failed to send correction email: {mail_err}")
+
     return jsonify({"message": "Exam sent to correction"}), 200
 
 @jwt_required()
@@ -1074,6 +1097,13 @@ def submit_correction(exam_id: int):
 
         db.session.commit()
 
+        try:
+            exam_with_relations = _get_exam_with_users_and_class(exam.id)
+            if exam_with_relations:
+                send_exam_corrected_email_to_coordinator(exam_with_relations)
+        except Exception as mail_err:
+            print(f"Failed to send corrected exam email: {mail_err}")
+
         return jsonify({
             "message": "Exam corrected and sent back to review"
         }), 200
@@ -1085,6 +1115,7 @@ def submit_correction(exam_id: int):
     except Exception as err:  # pylint: disable=broad-except
         db.session.rollback()
         return jsonify({"message": f"Unexpected error: {err}"}), 500
+    
 def _split_items_and_answers(items: List[dict]) -> tuple[List[dict], List[str]]:
     """
     Split generated items into:
@@ -1663,3 +1694,9 @@ def get_student_exam_review(exam_id: int):
 
     except Exception as err:  # pylint: disable=broad-except
         return jsonify({"message": f"Unexpected error: {err}"}), 500
+
+def _get_exam_with_users_and_class(exam_id: int):
+    return Exam.query.filter(
+        Exam.id == exam_id,
+        Exam.date_deleted.is_(None)
+    ).first()
