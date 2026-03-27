@@ -110,226 +110,194 @@ class ExamFallbackService:
 
     @staticmethod
     def _build_cloze_test_with_options_items(level: str) -> list[dict[str, Any]]:
-        """
-        Build fallback items for:
-        1. Cloze test with options
-        """
-        text = (
-            f"[{level}] Emma had always wanted to improve her English, so when she "
-            "saw an advertisement for a weekend course, she decided to sign up. "
-            "At first, she was nervous because she did not know anyone there, but "
-            "the teacher made everyone feel comfortable. By the end of the first day, "
-            "she had already made some new friends and felt much more confident."
-        )
-
         return [
             {
-                "text": text,
-                "gaps": [
-                    {
-                        "gap_number": 1,
-                        "question": "Emma had always wanted to ___ her English.",
-                        "options": ["improve", "increase", "rise", "developed"],
-                        "answer": "improve",
-                    },
-                    {
-                        "gap_number": 2,
-                        "question": "She decided to ___ up for the course.",
-                        "options": ["write", "sign", "join", "take"],
-                        "answer": "sign",
-                    },
-                    {
-                        "gap_number": 3,
-                        "question": "At first, she was nervous because she did not ___ anyone there.",
-                        "options": ["know", "meet", "recognize", "watch"],
-                        "answer": "know",
-                    },
-                    {
-                        "gap_number": 4,
-                        "question": "The teacher made everyone feel ___.",
-                        "options": ["easy", "relaxed", "comfortable", "quiet"],
-                        "answer": "comfortable",
-                    },
-                    {
-                        "gap_number": 5,
-                        "question": "By the end of the day, she felt more ___.",
-                        "options": ["careful", "confident", "certainly", "success"],
-                        "answer": "confident",
-                    },
-                ],
-            }
+                "question": (
+                    "Many AI-enabled tools ___ behavior by suggesting next steps. "
+                    "(A) push, (B) nudge, (C) force, (D) remove."
+                ),
+                "options": ["push", "nudge", "force", "remove"],
+                "answer": "nudge",
+            },
+            {
+                "question": (
+                    "Employees are at risk of losing their ___, which is key to personal development. "
+                    "(A) routine, (B) agency, (C) system, (D) memory."
+                ),
+                "options": ["routine", "agency", "system", "memory"],
+                "answer": "agency",
+            },
+            {
+                "question": (
+                    "Executives worry that development paths are becoming too ___. "
+                    "(A) guided, (B) random, (C) chaotic, (D) flexible."
+                ),
+                "options": ["guided", "random", "chaotic", "flexible"],
+                "answer": "guided",
+            },
+            {
+                "question": (
+                    "The main challenge is to ___ systems that preserve human choice. "
+                    "(A) destroy, (B) design, (C) ignore, (D) replace."
+                ),
+                "options": ["destroy", "design", "ignore", "replace"],
+                "answer": "design",
+            },
+            {
+                "question": (
+                    "We must decide whether to ___ agency to machines or retain human control. "
+                    "(A) give, (B) lose, (C) cede, (D) drop."
+                ),
+                "options": ["give", "lose", "cede", "drop"],
+                "answer": "cede",
+            },
         ]
-
     @staticmethod
     def _build_open_cloze_test_items(level: str) -> list[dict[str, Any]]:
-        """
-        Build fallback items for:
-        2. Open cloze test
-        """
-        text = (
-            f"[{level}] Lucy had been looking forward to the school trip for weeks. "
-            "When the day finally arrived, she got up early so as not to be late. "
-            "She packed everything she needed and left home with plenty of time to spare. "
-            "By the time she reached the station, most of her classmates had already arrived."
-        )
-
         return [
             {
-                "text": text,
-                "gaps": [
-                    {
-                        "gap_number": 1,
-                        "question": "Lucy had been looking forward ___ the school trip for weeks.",
-                        "answer": "to",
-                    },
-                    {
-                        "gap_number": 2,
-                        "question": "When the day finally arrived, she got ___ early.",
-                        "answer": "up",
-                    },
-                    {
-                        "gap_number": 3,
-                        "question": "She got up early so ___ not to be late.",
-                        "answer": "as",
-                    },
-                    {
-                        "gap_number": 4,
-                        "question": "She left home with plenty of time to ___.",
-                        "answer": "spare",
-                    },
-                    {
-                        "gap_number": 5,
-                        "question": "By the time she reached the station, most classmates had already ___.",
-                        "answer": "arrived",
-                    },
-                ],
-            }
+                "question": (
+                    "AI is becoming deeply embedded ___ organizational workflows."
+                ),
+                "answer": "in",
+            },
+            {
+                "question": (
+                    "These tools can strip people ___ the ability to reflect."
+                ),
+                "answer": "of",
+            },
+            {
+                "question": (
+                    "Employees are ___ danger of losing their agency."
+                ),
+                "answer": "in",
+            },
+            {
+                "question": (
+                    "The system often suggests the next step ___ the user."
+                ),
+                "answer": "for",
+            },
+            {
+                "question": (
+                    "It is time to think hard ___ what we want from the future."
+                ),
+                "answer": "about",
+            },
         ]
 
     @staticmethod
     def _build_word_formation_items(level: str) -> list[dict[str, Any]]:
-        """
-        Build fallback items for:
-        3. Word Formation
-        """
         return [
             {
                 "question": (
-                    f"[{level}] The manager appreciated her ______ and promoted her quickly."
+                    "AI systems are changing the way people make ______ decisions."
                 ),
-                "base_word": "HONEST",
-                "answer": "honesty",
+                "base_word": "ORGANIZE",
+                "answer": "organizational",
             },
             {
                 "question": (
-                    f"[{level}] It was a very ______ experience, and I learned a lot from it."
+                    "Many tools influence behavior through subtle ______."
                 ),
-                "base_word": "VALUE",
-                "answer": "valuable",
+                "base_word": "SUGGEST",
+                "answer": "suggestions",
             },
             {
                 "question": (
-                    f"[{level}] The weather was so ______ that we decided to stay inside."
+                    "Losing agency can affect personal ______ and growth."
                 ),
-                "base_word": "PLEASE",
-                "answer": "unpleasant",
+                "base_word": "DEVELOP",
+                "answer": "development",
             },
             {
                 "question": (
-                    f"[{level}] She completed the task quickly and ______."
+                    "Executives are concerned about the ______ of decision-making skills."
                 ),
-                "base_word": "EFFICIENCY",
-                "answer": "efficiently",
+                "base_word": "WEAK",
+                "answer": "weakening",
             },
             {
                 "question": (
-                    f"[{level}] There is still too much ______ about the final decision."
+                    "It is important to design systems that allow ______ thinking."
                 ),
-                "base_word": "CONFUSE",
-                "answer": "confusion",
+                "base_word": "DEPEND",
+                "answer": "independent",
             },
         ]
-
     @staticmethod
     def _build_key_word_transformation_items(level: str) -> list[dict[str, Any]]:
-        """
-        Build fallback items for:
-        4. Key word transformation
-        """
         return [
             {
                 "question": (
-                    f"[{level}] Original sentence: I last saw Marta three months ago."
+                    "Original sentence: AI tools often suggest the next step to users."
                 ),
-                "keyword": "SEEN",
-                "prompt": "I ______ Marta for three months.",
-                "answer": "have not seen",
+                "keyword": "PROPOSE",
+                "prompt": "AI tools often ______ the next step to users.",
+                "answer": "propose",
             },
             {
                 "question": (
-                    f"[{level}] Original sentence: It was unnecessary for Tom to bring his laptop."
+                    "Original sentence: Employees may lose their ability to make decisions."
                 ),
-                "keyword": "HAVE",
-                "prompt": "Tom ______ his laptop.",
-                "answer": "did not have to bring",
+                "keyword": "RISK",
+                "prompt": "Employees ______ their decision-making ability.",
+                "answer": "risk losing",
             },
             {
                 "question": (
-                    f"[{level}] Original sentence: The film was too boring for us to finish."
+                    "Original sentence: Executives are worried about reduced independence."
                 ),
-                "keyword": "ENOUGH",
-                "prompt": "The film was ______ for us to finish.",
-                "answer": "not interesting enough",
+                "keyword": "CONCERNED",
+                "prompt": "Executives ______ reduced independence.",
+                "answer": "are concerned about",
             },
             {
                 "question": (
-                    f"[{level}] Original sentence: 'Why do not we go out for dinner?' Anna said."
+                    "Original sentence: Systems should preserve space for reflection."
                 ),
-                "keyword": "SUGGESTED",
-                "prompt": "Anna ______ out for dinner.",
-                "answer": "suggested going",
+                "keyword": "ALLOW",
+                "prompt": "Systems should ______ reflection.",
+                "answer": "allow space for",
             },
             {
                 "question": (
-                    f"[{level}] Original sentence: Perhaps James forgot about the meeting."
+                    "Original sentence: We must decide whether machines take control."
                 ),
-                "keyword": "MIGHT",
-                "prompt": "James ______ about the meeting.",
-                "answer": "might have forgotten",
+                "keyword": "CEDE",
+                "prompt": "We must decide whether to ______ control to machines.",
+                "answer": "cede",
             },
         ]
 
     @staticmethod
     def _build_multiple_choice_items(level: str) -> list[dict[str, Any]]:
-        """
-        Build fallback items for:
-        5. Multiple Choice
-        """
         return [
             {
-                "question": f"[{level}] If I had more free time, I ______ a new language.",
-                "options": ["learn", "would learn", "will learn", "learned"],
-                "answer": "would learn",
+                "question": "AI tools can ___ decisions automatically.",
+                "options": ["do", "make", "build", "create"],
+                "answer": "make",
             },
             {
-                "question": f"[{level}] She has worked here ______ 2021.",
-                "options": ["for", "since", "during", "from"],
-                "answer": "since",
+                "question": "Employees need to ___ ownership of their decisions.",
+                "options": ["take", "do", "make", "bring"],
+                "answer": "take",
             },
             {
-                "question": f"[{level}] We were tired, ______ we continued working.",
-                "options": ["because", "although", "but", "unless"],
-                "answer": "but",
+                "question": "The system often suggests ___ next step.",
+                "options": ["a", "the", "an", "one"],
+                "answer": "the",
             },
             {
-                "question": f"[{level}] The book ______ by the time I arrived.",
-                "options": ["was sold", "had been sold", "has sold", "sold"],
-                "answer": "had been sold",
+                "question": "Human agency is essential ___ personal development.",
+                "options": ["for", "to", "with", "at"],
+                "answer": "for",
             },
             {
-                "question": f"[{level}] You ______ smoke here. It is forbidden.",
-                "options": ["must not", "do not have to", "might not", "would not"],
-                "answer": "must not",
+                "question": "People should think carefully ___ what they want from AI.",
+                "options": ["about", "on", "with", "to"],
+                "answer": "about",
             },
         ]
 
@@ -344,21 +312,21 @@ class ExamFallbackService:
         return [
             {
                 "question": (
-                    f"[{level}] Complete this generic fallback item for exercise type: "
+                    "Complete this generic fallback item for exercise type: "
                     f"{exercise_name}. Item 1."
                 ),
                 "answer": "Sample answer 1",
             },
             {
                 "question": (
-                    f"[{level}] Complete this generic fallback item for exercise type: "
+                    "Complete this generic fallback item for exercise type: "
                     f"{exercise_name}. Item 2."
                 ),
                 "answer": "Sample answer 2",
             },
             {
                 "question": (
-                    f"[{level}] Complete this generic fallback item for exercise type: "
+                    "Complete this generic fallback item for exercise type: "
                     f"{exercise_name}. Item 3."
                 ),
                 "answer": "Sample answer 3",

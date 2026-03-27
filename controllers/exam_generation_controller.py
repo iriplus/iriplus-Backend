@@ -38,6 +38,7 @@ from utils.types_enum import ExamStatus
 from utils.exam_xp import calculate_exam_xp, resolve_level_from_xp, apply_exam_xp_to_student
 from utils.mpreg_utils import predict_next_student_score, get_difficulty_band
 from services.exam_fallback_service import ExamFallbackService
+import time
 
 
 def extract_json(text: str) -> str:
@@ -171,7 +172,7 @@ def generate_exam():
 
         except Exception as err:
             print("Generation flow failed, using fallback:", err)
-
+            time.sleep(10)
             parsed_output = ExamFallbackService.build_exam_payload(
                 level=level,
                 exercise_types=exercise_types,
