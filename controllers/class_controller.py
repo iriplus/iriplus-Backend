@@ -61,6 +61,7 @@ def create_class():
         - description (str)
         - suggested_level (str)
         - max_capacity (int)
+        - teacher_ids (list[int], optional)
 
     Returns:
         JSON payload with the new resource id on success, or an error message.
@@ -73,6 +74,7 @@ def create_class():
         description = data["description"]
         suggested_level = data["suggested_level"]
         max_capacity = int(data["max_capacity"])
+        teacher_ids = data.get("teacher_ids", [])
 
         new_class = Class(
             description=description,
@@ -81,6 +83,17 @@ def create_class():
             class_code=generate_class_code(),
             date_created=datetime.datetime.now(),
         )
+
+        if teacher_ids:
+            teachers = (
+                User.query
+                .filter(User.id.in_(teacher_ids))
+                .filter(User.type == UserType.TEACHER)
+                .filter(User.date_deleted.is_(None))
+                .filter(User.is_verified.is_(True))
+                .all()
+            )
+            new_class.teachers = teachers   # pyright: ignore[reportAttributeAccessIssue]
 
         db.session.add(new_class)
         db.session.commit()
