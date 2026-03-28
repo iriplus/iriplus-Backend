@@ -253,7 +253,7 @@ def generate_student_exam_route():
     return generate_student_exam()
 
 @exam_bp.route("/api/exam/<int:exam_id>/full", methods=["GET"])
-##@jwt_required()
+@jwt_required()
 def get_exam_full(exam_id: int):
     """
     Docstring for get_exam_full

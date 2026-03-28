@@ -306,16 +306,31 @@ You must correct the student's exam attempt using the official answers.
 Exam attempt to correct:
 {correction_payload}
 
-Correction rules:
-- Evaluate each item individually.
-- Compare the student's answer with the correct answer.
-- Be fair but rigorous.
-- For closed exercises, mark as correct only if the answer is acceptable.
-- For open-ended exercise types, allow equivalent answers when they preserve the intended meaning and level.
-- Return an INTEGER score from 0 to 100.
-- The score must reflect the overall proportion of correct answers.
-- Output STRICT JSON only.
-- Do NOT include explanations outside JSON.
+Mandatory grading policy:
+- Evaluate EVERY item individually.
+- Be strict. Default to incorrect unless the answer is clearly correct.
+- Do not reward vague, guessed, unrelated, contradictory, or overly incomplete answers.
+- An empty answer receives 0.0 points.
+- A clearly wrong answer receives 0.0 points.
+- A partially relevant answer must NEVER receive the same value as a fully correct answer.
+
+Scoring policy per item:
+- Use only these values for "awarded_points": 0.0, 0.5, 1.0
+- 1.0 = fully correct answer or clearly acceptable equivalent
+- 0.5 = only for an answer that is meaningfully close but incomplete or imprecise
+- 0.0 = incorrect answer
+- For closed or fixed-answer items, use only 0.0 or 1.0
+- Use 0.5 only when partial credit is truly deserved
+- If you assign 0.5, or assign 1.0 to a non-exact equivalent answer, the item feedback must explicitly explain why
+
+Output policy:
+- "feedback" is REQUIRED and non-empty for every exercise
+- "feedback" is REQUIRED and non-empty for every item
+- "general_feedback" is REQUIRED and non-empty
+- The final "score" must be based on the sum of awarded_points divided by the total number of items
+- Return STRICT JSON only
+- Do not include markdown
+- Do not include explanations outside JSON
 
 Required JSON schema:
 
@@ -328,13 +343,15 @@ Required JSON schema:
       "exercise_type": "string",
       "correct_count": 0,
       "total_count": 0,
+      "awarded_points_sum": 0.0,
       "feedback": "string",
       "items": [
         {{
           "item_index": 0,
           "student_answer": "string",
           "correct_answer": "string",
-          "is_correct": true,
+          "is_correct": false,
+          "awarded_points": 0.0,
           "feedback": "string"
         }}
       ]
@@ -386,7 +403,7 @@ def generate_student_correction_from_llm(prompt: str) -> str:
             "prompt": prompt,
             "stream": False,
             "options": {
-                "temperature": 0.1
+                "temperature": 0.0
             }
         },
         timeout=300,
