@@ -37,7 +37,7 @@ from services.generic_context_service import get_random_generic_context
 from utils.types_enum import ExamStatus
 from utils.exam_xp import calculate_exam_xp, resolve_level_from_xp, apply_exam_xp_to_student
 from utils.mpreg_utils import predict_next_student_score, get_difficulty_band
-from services.exam_fallback_service import ExamFallbackService
+from services.exam_fallback_service import ExamFallbackService, StudentExamFallbackService
 import time
 
 
@@ -1160,14 +1160,7 @@ def generate_student_exam():
     - RAG retrieval
     - LLM generation
 
-    Expected JSON payload:
-    {
-        "class_id": int,
-        "exercise_type_ids": [int]
-    }
-
-    Returns:
-        201 with exam_id if successful.
+    If the generation flow fails, a deterministic fallback exam is created.
     """
 
     data = request.get_json(silent=True)
@@ -1228,7 +1221,7 @@ def generate_student_exam():
             exercise_types.append(exercise)
 
         # ------------------------
-        # Resolve generic context
+        # Resolve normal context
         # ------------------------
         course_name = class_obj.description
         level = class_obj.suggested_level
@@ -1251,68 +1244,69 @@ def generate_student_exam():
         db.session.flush()
 
         # ------------------------
-        # RAG phase
+        # Generation flow / fallback
         # ------------------------
         exercise_list_text = "\n".join(
             f"- {exercise.name}: {exercise.content_description}"
             for exercise in exercise_types
         )
 
-        contexts = retrieve_course_context(
-            course_id=course_name,
-            level=level,
-            exercises_description=exercise_list_text,
-        )
-
-        retrieved_context_text = "\n\n---\n\n".join(contexts)
-
-        # ------------------------
-        # LLM phase
-        # ------------------------
-        prompt = build_student_prompt(
-            level=level,
-            source_text=generic_context,
-            exercise_list_text=exercise_list_text,
-            retrieved_context=retrieved_context_text,
-            difficulty_band=difficulty_band,
-        )
-
-        raw_output = generate_exam_from_llm(prompt)
-
-        # ------------------------
-        # Parse model output
-        # ------------------------
         try:
+            # ------------------------
+            # RAG phase
+            # ------------------------
+            contexts = retrieve_course_context(
+                course_id=course_name,
+                level=level,
+                exercises_description=exercise_list_text,
+            )
+
+            retrieved_context_text = "\n\n---\n\n".join(contexts)
+            print(retrieved_context_text)
+            # ------------------------
+            # LLM phase
+            # ------------------------
+            prompt = build_student_prompt(
+                level=level,
+                source_text=generic_context,
+                exercise_list_text=exercise_list_text,
+                retrieved_context=retrieved_context_text,
+                difficulty_band=difficulty_band,
+            )
+
+            raw_output = generate_exam_from_llm(prompt)
+
             cleaned_json = extract_json(raw_output)
             parsed_output = json.loads(cleaned_json)
-            print(parsed_output)
-        except Exception:
-            print("Model did not return valid JSON")
-            db.session.rollback()
-            return jsonify({"message": "Model did not return valid JSON"}), 500
 
-        # ------------------------
-        # Validate top-level structure
-        # ------------------------
-        exercises_output = parsed_output.get("exercises")
-        if not isinstance(exercises_output, list) or not exercises_output:
-            db.session.rollback()
-            print("invalid structure")
-            return jsonify(
-                {"message": "Invalid exam structure returned by model"}
-            ), 500
+            exercises_output = parsed_output.get("exercises")
+            if not isinstance(exercises_output, list) or not exercises_output:
+                raise ValueError("Invalid exam structure returned by model")
 
-        if len(exercises_output) != len(exercise_types):
-            db.session.rollback()
-            print("Expected number of excercise blocks")
-            return jsonify({
-                "message": "Model did not return the expected number of exercise blocks"
-            }), 500
+            if len(exercises_output) != len(exercise_types):
+                raise ValueError(
+                    "Model did not return the expected number of exercise blocks"
+                )
+
+        except Exception as err:  # pylint: disable=broad-except
+            print("Student generation flow failed, using fallback:", err)
+            time.sleep(10)
+            parsed_output = StudentExamFallbackService.build_exam_payload(
+                level=level,
+                exercise_types=exercise_types,
+            )
+            raw_output = StudentExamFallbackService.build_snapshot(
+                reason=str(err),
+                payload=parsed_output,
+            )
+            exercises_output = parsed_output["exercises"]
+
+            # Override the original random bucket context with the fixed fallback one.
+            new_exam.context = StudentExamFallbackService.FALLBACK_CONTEXT
 
         # ------------------------
         # Persist generated exercise instances
         # ------------------------
-        print(exercises_output)
         for index, exercise_block in enumerate(exercises_output):
             instructions = exercise_block.get("instructions")
             items = exercise_block.get("items")
@@ -1333,7 +1327,10 @@ def generate_student_exam():
 
             final_instructions = instructions.strip()
             if not final_instructions:
-                final_instructions = requested_exercise.content_description or requested_exercise.name
+                final_instructions = (
+                    requested_exercise.content_description
+                    or requested_exercise.name
+                )
 
             public_items, answers = _split_items_and_answers(items)
 
@@ -1349,7 +1346,7 @@ def generate_student_exam():
         # ------------------------
         # Persist exam result
         # ------------------------
-        new_exam.generated_snapshot = cleaned_json
+        new_exam.generated_snapshot = raw_output
         new_exam.status = ExamStatus.STUDENT_EXAM.value
 
         db.session.commit()
@@ -1577,7 +1574,6 @@ def submit_student_exam(exam_id: int):
     except Exception as err:  # pylint: disable=broad-except
         db.session.rollback()
         return jsonify({"message": f"Unexpected error: {err}"}), 500
-
 
 @jwt_required()
 def get_student_exam_review(exam_id: int):
