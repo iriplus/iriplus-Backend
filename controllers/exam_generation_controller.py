@@ -670,7 +670,7 @@ def get_teacher_exams_controller():
             .filter(
                 Exam.date_deleted.is_(None),
                 Exam.user_id == current_user_id,
-                Exam.status != "Generating"
+                Exam.status != ExamStatus.GENERATING.value
             )
             .all()
         )
@@ -715,7 +715,7 @@ def get_student_exams_controller():
             .filter(
                 Exam.date_deleted.is_(None),
                 Exam.user_id == current_user_id,
-                Exam.status != "Generating"
+                Exam.status != ExamStatus.GENERATING.value
             )
             .all()
         )
@@ -745,7 +745,7 @@ def get_student_exams_controller():
     except Exception as err:  # pylint: disable=broad-except
         print(err)
         return jsonify({"error": str(err)}), 500
-
+@jwt_required()
 def set_exam_on_correction(exam_id: int):
     """
     Docstring for set_exam_on_correction
@@ -759,6 +759,8 @@ def set_exam_on_correction(exam_id: int):
 
         if exam.user_id is not None and exam.user_id != current_user_id:
             return jsonify({"error": "Exam belongs to another teacher"}), 409
+        if exam.status != ExamStatus.PENDING_CORRECTION.value:
+            return jsonify({"error": "Exam is not Pending Correction"}), 400
 
         # Pasar a On Correction
         exam.status = ExamStatus.ON_CORRECTION.value
@@ -769,30 +771,8 @@ def set_exam_on_correction(exam_id: int):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
-def leave_exam_correction(exam_id: int):
-    """
-    Docstring for leave_exam_correction
-    """
-    try:
-        exam = Exam.query.get(exam_id)
 
-        if not exam or exam.date_deleted is not None:
-            return jsonify({"error": "Exam not found"}), 404
-
-        # Solo permitir si está en corrección
-        if exam.status != ExamStatus.ON_CORRECTION.value:
-            return jsonify({"error": "Exam is not currently On Correction"}), 400
-
-        # Cambiar únicamente el estado
-        exam.status = ExamStatus.PENDING_CORRECTION.value
-        db.session.commit()
-
-        return jsonify({"message": "Exam moved back to Pending Correction"}), 200
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
-
+@jwt_required()
 def set_exam_on_review(exam_id: int):
     """
     Docstring for set_exam_on_review
@@ -812,7 +792,9 @@ def set_exam_on_review(exam_id: int):
         if exam.coordinator_id is None:
             exam.coordinator_id = current_user_id
 
-        # Pasar a On Review siempre (reanudar)
+        # Pasar a On Review si estaba en Pending Review
+        if exam.status != ExamStatus.PENDING_REVIEW.value:
+            return jsonify({"error": "Exam is not Pending Review"}), 400
         exam.status = ExamStatus.ON_REVIEW.value
         db.session.commit()
 
@@ -829,6 +811,7 @@ def set_exam_on_review(exam_id: int):
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
+@jwt_required()
 def send_exam_to_review(exam_id: int):
     """
     Docstring for send_exam_to_review
@@ -842,6 +825,8 @@ def send_exam_to_review(exam_id: int):
 
         if exam.user_id is not None and exam.user_id != current_user_id:
             return jsonify({"error": "Exam belongs to another teacher"}), 409
+        if exam.status not in (ExamStatus.GENERATING.value, ExamStatus.ON_CORRECTION.value):
+            return jsonify({"error": "Exam cannot be sent to review from current status"}), 400
 
         # Pasar a Pending Review
         exam.status = ExamStatus.PENDING_REVIEW.value
@@ -853,47 +838,23 @@ def send_exam_to_review(exam_id: int):
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
-def leave_exam_review(exam_id: int):
-    """
-    Docstring for leave_exam_review
-    """
-    try:
-        exam = Exam.query.get(exam_id)
-
-        if not exam or exam.date_deleted is not None:
-            return jsonify({"error": "Exam not found"}), 404
-
-        # Solo permitir si está en revisión
-        if exam.status != "On Review":
-            return jsonify({"error": "Exam is not currently On Review"}), 400
-
-        # Cambiar únicamente el estado
-        exam.status = ExamStatus.PENDING_REVIEW.value
-        db.session.commit()
-
-        return jsonify({"message": "Exam moved back to Pending Review"}), 200
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
-
+@jwt_required()
 def accept_exam(exam_id: int):
     """
     Docstring for accept_exam
     """
     try:
-        current_user_id = int(get_jwt_identity())  # ← clave
+        current_user_id = int(get_jwt_identity())
 
         exam = Exam.query.get(exam_id)
         if not exam or exam.date_deleted is not None:
             return jsonify({"error": "Exam not found"}), 404
 
-        print("ACCEPT DEBUG coordinator_id:", exam.coordinator_id, type(exam.coordinator_id))
-        print("ACCEPT DEBUG current_user_id:", current_user_id, type(current_user_id))
-
         # Solo la coordinadora asignada puede aceptar
         if exam.coordinator_id != current_user_id:
             return jsonify({"error": "Not authorized"}), 403
+        if exam.status != ExamStatus.ON_REVIEW.value:
+            return jsonify({"error": "Exam is not On Review"}), 400
 
         exam.status = ExamStatus.ACCEPTED.value
         db.session.commit()
@@ -916,11 +877,18 @@ def send_to_correction(exam_id: int):
     """
     Docstring for send_to_correction
     """
+    current_user_id = int(get_jwt_identity())
     exam = Exam.query.get(exam_id)
     if not exam:
         return jsonify({"message": "Exam not found"}), 404
 
     data = request.get_json()
+    if not data:
+        return jsonify({"message": "Invalid JSON body"}), 400
+    if exam.coordinator_id != current_user_id:
+        return jsonify({"error": "Not authorized"}), 403
+    if exam.status != ExamStatus.ON_REVIEW.value:
+        return jsonify({"error": "Exam is not On Review"}), 400
     exam.status = ExamStatus.PENDING_CORRECTION.value
     exam.notes = data.get("notes")
 
@@ -1115,7 +1083,6 @@ def submit_correction(exam_id: int):
     except Exception as err:  # pylint: disable=broad-except
         db.session.rollback()
         return jsonify({"message": f"Unexpected error: {err}"}), 500
-    
 def _split_items_and_answers(items: List[dict]) -> tuple[List[dict], List[str]]:
     """
     Split generated items into:
@@ -1623,6 +1590,8 @@ def get_student_exam_review(exam_id: int):
 
         if not exam:
             return jsonify({"message": "Exam not found"}), 404
+        if exam.status != ExamStatus.SOLVED.value:
+            return jsonify({"error": "Exam is not solved yet"}), 400
 
         result = {
             "id": exam.id,
