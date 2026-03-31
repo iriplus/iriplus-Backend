@@ -14,7 +14,7 @@ This module orchestrates:
 
 import json
 import datetime
-from typing import cast, List
+from typing import cast, List, Any, Dict
 import io
 from flask import request, jsonify, send_file
 from flask_jwt_extended import get_jwt_identity, jwt_required
@@ -34,10 +34,13 @@ from orm_models import db, Exam, Class, Exercise, ExamExerciseInstance, User
 from services.rag_service import retrieve_course_context
 from services.llm_service import build_prompt, generate_exam_from_llm, build_refinement_prompt, build_student_prompt, build_student_correction_prompt, generate_student_correction_from_llm
 from services.generic_context_service import get_random_generic_context
+from utils.email_utils import send_exam_accepted_email_to_teacher, send_exam_corrected_email_to_coordinator, send_exam_on_review_email_to_teacher, send_exam_sent_to_correction_email_to_teacher
 from utils.types_enum import ExamStatus
 from utils.exam_xp import calculate_exam_xp, resolve_level_from_xp, apply_exam_xp_to_student
 from utils.mpreg_utils import predict_next_student_score, get_difficulty_band
-
+from services.exam_fallback_service import ExamFallbackService, StudentExamFallbackService
+import time
+import math
 
 def extract_json(text: str) -> str:
     """
@@ -126,79 +129,90 @@ def generate_exam():
         db.session.flush()  # ensures new_exam.id exists
 
         # ------------------------
-        # RAG Phase
+        # Generation Flow / Fallback
         # ------------------------
         level = class_obj.suggested_level
 
-        exercise_list_text = "\n".join(
-            [f"- {ex.name}: {ex.content_description}" for ex in exercise_types]
-        )
-
-        contexts = retrieve_course_context(
-            course_id=class_obj.description,
-            level=level,
-            exercises_description=exercise_list_text,
-        )
-
-        retrieved_context_text = "\n\n---\n\n".join(contexts)
-
-        # ------------------------
-        # LLM Phase
-        # ------------------------
-        prompt = build_prompt(
-            level=level,
-            teacher_text=context,
-            exercise_list_text=exercise_list_text,
-            retrieved_context=retrieved_context_text,
-        )
-
-        raw_output = generate_exam_from_llm(prompt)
-
-        #print("----- MODEL RAW OUTPUT -----")
-        #print(raw_output)
-        #print("----- END MODEL OUTPUT -----")
-
-        # ------------------------
-        # Validate JSON
-        # ------------------------
         try:
+            # ------------------------
+            # RAG Phase
+            # ------------------------
+            exercise_list_text = "\n".join(
+                [f"- {ex.name}: {ex.content_description}" for ex in exercise_types]
+            )
+
+            contexts = retrieve_course_context(
+                course_id=class_obj.description,
+                level=level,
+                exercises_description=exercise_list_text,
+            )
+
+            retrieved_context_text = "\n\n---\n\n".join(contexts)
+
+            # ------------------------
+            # LLM Phase
+            # ------------------------
+            prompt = build_prompt(
+                level=level,
+                teacher_text=context,
+                exercise_list_text=exercise_list_text,
+                retrieved_context=retrieved_context_text,
+            )
+
+            raw_output = generate_exam_from_llm(prompt)
+
+            #print("----- MODEL RAW OUTPUT -----")
+            #print(raw_output)
+            #print("----- END MODEL OUTPUT -----")
+
             cleaned_json = extract_json(raw_output)
             parsed_output = json.loads(cleaned_json)
-            for exercise_block in parsed_output["exercises"]:
-                exercise_name = exercise_block["exercise_type"]
 
-                # buscar el exercise type en BD
-                exercise_type = Exercise.query.filter(
-                    db.func.lower(Exercise.name) == exercise_name.lower()
-                ).first()
+            if "exercises" not in parsed_output:
+                raise ValueError("Invalid exam structure returned by model")
 
-                if not exercise_type:
-                    db.session.rollback()
-                    return jsonify({
-                        "message": f"Exercise type '{exercise_name}' not found in catalog"
-                    }), 400
-
-                instance = ExamExerciseInstance(
-                    exam_id=new_exam.id,
-                    exercise_type_id=exercise_type.id,
-                    instructions=exercise_block["instructions"],
-                    content_json=json.dumps(exercise_block["items"]),
-                    answer_key_json=json.dumps({
-                        "answers": [
-                            item["answer"] for item in exercise_block["items"]
-                        ]
-                    })
-                )
-                db.session.add(instance)
         except Exception as err:
-            db.session.rollback()
-            print('Model error', err)
-            return jsonify({"message": "Model did not return valid JSON"}), 500
-        # Optional: minimal structural validation
-        if "exercises" not in parsed_output:
-            print('Invalid exam structure')
-            db.session.rollback()
-            return jsonify({"message": "Invalid exam structure returned by model"}), 500
+            print("Generation flow failed, using fallback:", err)
+            time.sleep(10)
+            parsed_output = ExamFallbackService.build_exam_payload(
+                level=level,
+                exercise_types=exercise_types,
+            )
+
+            raw_output = ExamFallbackService.build_snapshot(
+                reason=str(err),
+                payload=parsed_output,
+            )
+
+        # ------------------------
+        # Persist Exercise Instances
+        # ------------------------
+        for exercise_block in parsed_output["exercises"]:
+            exercise_name = exercise_block["exercise_type"]
+
+            # buscar el exercise type en BD
+            exercise_type = Exercise.query.filter(
+                db.func.lower(Exercise.name) == exercise_name.lower()
+            ).first()
+
+            if not exercise_type:
+                db.session.rollback()
+                return jsonify({
+                    "message": f"Exercise type '{exercise_name}' not found in catalog"
+                }), 400
+
+            instance = ExamExerciseInstance(
+                exam_id=new_exam.id,
+                exercise_type_id=exercise_type.id,
+                instructions=exercise_block["instructions"],
+                content_json=json.dumps(exercise_block["items"]),
+                answer_key_json=json.dumps({
+                    "answers": ExamFallbackService.extract_answers(
+                        exercise_block["items"]
+                    )
+                })
+            )
+            db.session.add(instance)
 
         # ------------------------
         # Persist Results
@@ -669,7 +683,7 @@ def get_teacher_exams_controller():
             .filter(
                 Exam.date_deleted.is_(None),
                 Exam.user_id == current_user_id,
-                Exam.status != "Generating"
+                Exam.status != ExamStatus.GENERATING.value
             )
             .all()
         )
@@ -714,7 +728,7 @@ def get_student_exams_controller():
             .filter(
                 Exam.date_deleted.is_(None),
                 Exam.user_id == current_user_id,
-                Exam.status != "Generating"
+                Exam.status != ExamStatus.GENERATING.value
             )
             .all()
         )
@@ -744,7 +758,7 @@ def get_student_exams_controller():
     except Exception as err:  # pylint: disable=broad-except
         print(err)
         return jsonify({"error": str(err)}), 500
-
+@jwt_required()
 def set_exam_on_correction(exam_id: int):
     """
     Docstring for set_exam_on_correction
@@ -758,6 +772,8 @@ def set_exam_on_correction(exam_id: int):
 
         if exam.user_id is not None and exam.user_id != current_user_id:
             return jsonify({"error": "Exam belongs to another teacher"}), 409
+        if exam.status != ExamStatus.PENDING_CORRECTION.value:
+            return jsonify({"error": "Exam is not Pending Correction"}), 400
 
         # Pasar a On Correction
         exam.status = ExamStatus.ON_CORRECTION.value
@@ -768,30 +784,8 @@ def set_exam_on_correction(exam_id: int):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
-def leave_exam_correction(exam_id: int):
-    """
-    Docstring for leave_exam_correction
-    """
-    try:
-        exam = Exam.query.get(exam_id)
 
-        if not exam or exam.date_deleted is not None:
-            return jsonify({"error": "Exam not found"}), 404
-
-        # Solo permitir si está en corrección
-        if exam.status != ExamStatus.ON_CORRECTION.value:
-            return jsonify({"error": "Exam is not currently On Correction"}), 400
-
-        # Cambiar únicamente el estado
-        exam.status = ExamStatus.PENDING_CORRECTION.value
-        db.session.commit()
-
-        return jsonify({"message": "Exam moved back to Pending Correction"}), 200
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
-
+@jwt_required()
 def set_exam_on_review(exam_id: int):
     """
     Docstring for set_exam_on_review
@@ -811,9 +805,18 @@ def set_exam_on_review(exam_id: int):
         if exam.coordinator_id is None:
             exam.coordinator_id = current_user_id
 
-        # Pasar a On Review siempre (reanudar)
+        # Pasar a On Review si estaba en Pending Review
+        if exam.status != ExamStatus.PENDING_REVIEW.value:
+            return jsonify({"error": "Exam is not Pending Review"}), 400
         exam.status = ExamStatus.ON_REVIEW.value
         db.session.commit()
+
+        try:
+            exam_with_relations = _get_exam_with_users_and_class(exam.id)
+            if exam_with_relations:
+                send_exam_on_review_email_to_teacher(exam_with_relations)
+        except Exception as mail_err:
+            print(f"Failed to send On Review email: {mail_err}")
 
         return jsonify({"message": "Moved to On Review"}), 200
 
@@ -821,6 +824,7 @@ def set_exam_on_review(exam_id: int):
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
+@jwt_required()
 def send_exam_to_review(exam_id: int):
     """
     Docstring for send_exam_to_review
@@ -834,6 +838,8 @@ def send_exam_to_review(exam_id: int):
 
         if exam.user_id is not None and exam.user_id != current_user_id:
             return jsonify({"error": "Exam belongs to another teacher"}), 409
+        if exam.status not in (ExamStatus.GENERATING.value, ExamStatus.ON_CORRECTION.value):
+            return jsonify({"error": "Exam cannot be sent to review from current status"}), 400
 
         # Pasar a Pending Review
         exam.status = ExamStatus.PENDING_REVIEW.value
@@ -845,50 +851,33 @@ def send_exam_to_review(exam_id: int):
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
-def leave_exam_review(exam_id: int):
-    """
-    Docstring for leave_exam_review
-    """
-    try:
-        exam = Exam.query.get(exam_id)
-
-        if not exam or exam.date_deleted is not None:
-            return jsonify({"error": "Exam not found"}), 404
-
-        # Solo permitir si está en revisión
-        if exam.status != "On Review":
-            return jsonify({"error": "Exam is not currently On Review"}), 400
-
-        # Cambiar únicamente el estado
-        exam.status = ExamStatus.PENDING_REVIEW.value
-        db.session.commit()
-
-        return jsonify({"message": "Exam moved back to Pending Review"}), 200
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
-
+@jwt_required()
 def accept_exam(exam_id: int):
     """
     Docstring for accept_exam
     """
     try:
-        current_user_id = int(get_jwt_identity())  # ← clave
+        current_user_id = int(get_jwt_identity())
 
         exam = Exam.query.get(exam_id)
         if not exam or exam.date_deleted is not None:
             return jsonify({"error": "Exam not found"}), 404
 
-        print("ACCEPT DEBUG coordinator_id:", exam.coordinator_id, type(exam.coordinator_id))
-        print("ACCEPT DEBUG current_user_id:", current_user_id, type(current_user_id))
-
         # Solo la coordinadora asignada puede aceptar
         if exam.coordinator_id != current_user_id:
             return jsonify({"error": "Not authorized"}), 403
+        if exam.status != ExamStatus.ON_REVIEW.value:
+            return jsonify({"error": "Exam is not On Review"}), 400
 
         exam.status = ExamStatus.ACCEPTED.value
         db.session.commit()
+
+        try:
+            exam_with_relations = _get_exam_with_users_and_class(exam.id)
+            if exam_with_relations:
+                send_exam_accepted_email_to_teacher(exam_with_relations)
+        except Exception as mail_err:
+            print(f"Failed to send accepted exam email: {mail_err}")
 
         return jsonify({"message": "Exam accepted"}), 200
 
@@ -901,15 +890,30 @@ def send_to_correction(exam_id: int):
     """
     Docstring for send_to_correction
     """
+    current_user_id = int(get_jwt_identity())
     exam = Exam.query.get(exam_id)
     if not exam:
         return jsonify({"message": "Exam not found"}), 404
 
     data = request.get_json()
+    if not data:
+        return jsonify({"message": "Invalid JSON body"}), 400
+    if exam.coordinator_id != current_user_id:
+        return jsonify({"error": "Not authorized"}), 403
+    if exam.status != ExamStatus.ON_REVIEW.value:
+        return jsonify({"error": "Exam is not On Review"}), 400
     exam.status = ExamStatus.PENDING_CORRECTION.value
     exam.notes = data.get("notes")
 
     db.session.commit()
+
+    try:
+        exam_with_relations = _get_exam_with_users_and_class(exam.id)
+        if exam_with_relations:
+            send_exam_sent_to_correction_email_to_teacher(exam_with_relations)
+    except Exception as mail_err:
+        print(f"Failed to send correction email: {mail_err}")
+
     return jsonify({"message": "Exam sent to correction"}), 200
 
 @jwt_required()
@@ -1074,6 +1078,13 @@ def submit_correction(exam_id: int):
 
         db.session.commit()
 
+        try:
+            exam_with_relations = _get_exam_with_users_and_class(exam.id)
+            if exam_with_relations:
+                send_exam_corrected_email_to_coordinator(exam_with_relations)
+        except Exception as mail_err:
+            print(f"Failed to send corrected exam email: {mail_err}")
+
         return jsonify({
             "message": "Exam corrected and sent back to review"
         }), 200
@@ -1147,14 +1158,7 @@ def generate_student_exam():
     - RAG retrieval
     - LLM generation
 
-    Expected JSON payload:
-    {
-        "class_id": int,
-        "exercise_type_ids": [int]
-    }
-
-    Returns:
-        201 with exam_id if successful.
+    If the generation flow fails, a deterministic fallback exam is created.
     """
 
     data = request.get_json(silent=True)
@@ -1215,7 +1219,7 @@ def generate_student_exam():
             exercise_types.append(exercise)
 
         # ------------------------
-        # Resolve generic context
+        # Resolve normal context
         # ------------------------
         course_name = class_obj.description
         level = class_obj.suggested_level
@@ -1238,68 +1242,69 @@ def generate_student_exam():
         db.session.flush()
 
         # ------------------------
-        # RAG phase
+        # Generation flow / fallback
         # ------------------------
         exercise_list_text = "\n".join(
             f"- {exercise.name}: {exercise.content_description}"
             for exercise in exercise_types
         )
 
-        contexts = retrieve_course_context(
-            course_id=course_name,
-            level=level,
-            exercises_description=exercise_list_text,
-        )
-
-        retrieved_context_text = "\n\n---\n\n".join(contexts)
-
-        # ------------------------
-        # LLM phase
-        # ------------------------
-        prompt = build_student_prompt(
-            level=level,
-            source_text=generic_context,
-            exercise_list_text=exercise_list_text,
-            retrieved_context=retrieved_context_text,
-            difficulty_band=difficulty_band,
-        )
-
-        raw_output = generate_exam_from_llm(prompt)
-
-        # ------------------------
-        # Parse model output
-        # ------------------------
         try:
+            # ------------------------
+            # RAG phase
+            # ------------------------
+            contexts = retrieve_course_context(
+                course_id=course_name,
+                level=level,
+                exercises_description=exercise_list_text,
+            )
+
+            retrieved_context_text = "\n\n---\n\n".join(contexts)
+            print(retrieved_context_text)
+            # ------------------------
+            # LLM phase
+            # ------------------------
+            prompt = build_student_prompt(
+                level=level,
+                source_text=generic_context,
+                exercise_list_text=exercise_list_text,
+                retrieved_context=retrieved_context_text,
+                difficulty_band=difficulty_band,
+            )
+
+            raw_output = generate_exam_from_llm(prompt)
+
             cleaned_json = extract_json(raw_output)
             parsed_output = json.loads(cleaned_json)
-            print(parsed_output)
-        except Exception:
-            print("Model did not return valid JSON")
-            db.session.rollback()
-            return jsonify({"message": "Model did not return valid JSON"}), 500
 
-        # ------------------------
-        # Validate top-level structure
-        # ------------------------
-        exercises_output = parsed_output.get("exercises")
-        if not isinstance(exercises_output, list) or not exercises_output:
-            db.session.rollback()
-            print("invalid structure")
-            return jsonify(
-                {"message": "Invalid exam structure returned by model"}
-            ), 500
+            exercises_output = parsed_output.get("exercises")
+            if not isinstance(exercises_output, list) or not exercises_output:
+                raise ValueError("Invalid exam structure returned by model")
 
-        if len(exercises_output) != len(exercise_types):
-            db.session.rollback()
-            print("Expected number of excercise blocks")
-            return jsonify({
-                "message": "Model did not return the expected number of exercise blocks"
-            }), 500
+            if len(exercises_output) != len(exercise_types):
+                raise ValueError(
+                    "Model did not return the expected number of exercise blocks"
+                )
+
+        except Exception as err:  # pylint: disable=broad-except
+            print("Student generation flow failed, using fallback:", err)
+            time.sleep(10)
+            parsed_output = StudentExamFallbackService.build_exam_payload(
+                level=level,
+                exercise_types=exercise_types,
+            )
+            raw_output = StudentExamFallbackService.build_snapshot(
+                reason=str(err),
+                payload=parsed_output,
+            )
+            exercises_output = parsed_output["exercises"]
+
+            # Override the original random bucket context with the fixed fallback one.
+            new_exam.context = StudentExamFallbackService.FALLBACK_CONTEXT
 
         # ------------------------
         # Persist generated exercise instances
         # ------------------------
-        print(exercises_output)
         for index, exercise_block in enumerate(exercises_output):
             instructions = exercise_block.get("instructions")
             items = exercise_block.get("items")
@@ -1320,7 +1325,10 @@ def generate_student_exam():
 
             final_instructions = instructions.strip()
             if not final_instructions:
-                final_instructions = requested_exercise.content_description or requested_exercise.name
+                final_instructions = (
+                    requested_exercise.content_description
+                    or requested_exercise.name
+                )
 
             public_items, answers = _split_items_and_answers(items)
 
@@ -1336,7 +1344,7 @@ def generate_student_exam():
         # ------------------------
         # Persist exam result
         # ------------------------
-        new_exam.generated_snapshot = cleaned_json
+        new_exam.generated_snapshot = raw_output
         new_exam.status = ExamStatus.STUDENT_EXAM.value
 
         db.session.commit()
@@ -1472,38 +1480,180 @@ def submit_student_exam(exam_id: int):
             db.session.rollback()
             return jsonify({"message": "Model did not return valid correction JSON"}), 500
 
-        score = parsed_output.get("score")
         exercises_correction = parsed_output.get("exercises")
-        general_feedback = parsed_output.get("general_feedback", "")
-
-        if not isinstance(score, int) or score < 0 or score > 100:
-            db.session.rollback()
-            return jsonify({"message": "Invalid score returned by model"}), 500
+        model_general_feedback = (parsed_output.get("general_feedback") or "").strip()
 
         if not isinstance(exercises_correction, list):
             db.session.rollback()
             return jsonify({"message": "Invalid correction structure returned by model"}), 500
 
-        corrected_instance_ids = set()
-
+        model_exercises_by_id = {}
         for exercise_correction in exercises_correction:
-            instance_id = exercise_correction.get("exam_exercise_instance_id")
-            if not instance_id:
-                db.session.rollback()
-                return jsonify({"message": "Correction block missing instance id"}), 500
+            if not isinstance(exercise_correction, dict):
+                continue
 
+            instance_id = exercise_correction.get("exam_exercise_instance_id")
+            if instance_id:
+                model_exercises_by_id[instance_id] = exercise_correction
+
+        corrected_instance_ids = set()
+        normalized_exercises_correction = []
+        total_items_for_score = 0
+        total_weighted_points = 0.0
+        full_correct_items = 0
+
+        for expected_exercise in correction_payload["exercises"]:
+            instance_id = expected_exercise["exam_exercise_instance_id"]
             instance = instance_map.get(instance_id)
+
             if not instance:
                 db.session.rollback()
                 return jsonify({"message": f"Unknown corrected instance id {instance_id}"}), 500
 
-            instance.correction_json = json.dumps(exercise_correction)
+            model_exercise = model_exercises_by_id.get(instance_id)
+            if not model_exercise:
+                db.session.rollback()
+                return jsonify({"message": f"Model did not correct exercise instance {instance_id}"}), 500
+
+            model_items = model_exercise.get("items")
+            if not isinstance(model_items, list):
+                db.session.rollback()
+                return jsonify({
+                    "message": f"Invalid items structure for corrected instance {instance_id}"
+                }), 500
+
+            model_items_by_index = {}
+            for model_item in model_items:
+                if not isinstance(model_item, dict):
+                    continue
+
+                item_index = model_item.get("item_index")
+                if isinstance(item_index, int):
+                    model_items_by_index[item_index] = model_item
+
+            normalized_items = []
+            correct_count = 0
+            awarded_points_sum = 0.0
+            expected_items = expected_exercise.get("items", [])
+
+            for expected_item in expected_items:
+                item_index = expected_item["item_index"]
+                student_answer = expected_item.get("student_answer", "")
+                correct_answer = expected_item.get("correct_answer", "")
+                model_item = model_items_by_index.get(item_index, {})
+
+                raw_awarded_points = model_item.get("awarded_points")
+                if raw_awarded_points is None:
+                    raw_awarded_points = 1.0 if model_item.get("is_correct") is True else 0.0
+
+                try:
+                    awarded_points = float(raw_awarded_points)
+                except (TypeError, ValueError):
+                    awarded_points = 0.0
+
+                if awarded_points >= 0.75:
+                    awarded_points = 1.0
+                elif awarded_points >= 0.25:
+                    awarded_points = 0.5
+                else:
+                    awarded_points = 0.0
+
+                is_correct = awarded_points == 1.0
+
+                if is_correct:
+                    correct_count += 1
+                    full_correct_items += 1
+
+                item_feedback = (model_item.get("feedback") or "").strip()
+                if not item_feedback:
+                    if awarded_points == 1.0:
+                        item_feedback = (
+                            "Correct. The answer matches the expected answer "
+                            "or a clearly acceptable equivalent."
+                        )
+                    elif awarded_points == 0.5:
+                        item_feedback = (
+                            "Partially correct. The answer is related to the expected answer, "
+                            "but it is incomplete or imprecise, so it received partial credit."
+                        )
+                    elif not student_answer:
+                        item_feedback = (
+                            "Incorrect. No answer was provided."
+                        )
+                    else:
+                        item_feedback = (
+                            "Incorrect. The answer does not match the expected answer closely enough."
+                        )
+
+                normalized_items.append({
+                    "item_index": item_index,
+                    "student_answer": student_answer,
+                    "correct_answer": correct_answer,
+                    "is_correct": is_correct,
+                    "awarded_points": awarded_points,
+                    "feedback": item_feedback
+                })
+
+                awarded_points_sum += awarded_points
+                total_weighted_points += awarded_points
+                total_items_for_score += 1
+
+            total_count = len(normalized_items)
+            extra_points_awarded = awarded_points_sum > correct_count
+
+            exercise_feedback = (model_exercise.get("feedback") or "").strip()
+            if not exercise_feedback:
+                exercise_feedback = (
+                    f"Fully correct items: {correct_count}/{total_count}. "
+                    f"Weighted points: {awarded_points_sum:.1f}/{total_count}."
+                )
+                if extra_points_awarded:
+                    exercise_feedback += (
+                        " Partial credit was granted only where an answer was close "
+                        "but not fully correct."
+                    )
+
+            normalized_exercise = {
+                "exam_exercise_instance_id": instance_id,
+                "exercise_type": expected_exercise.get("exercise_type"),
+                "correct_count": correct_count,
+                "total_count": total_count,
+                "awarded_points_sum": awarded_points_sum,
+                "feedback": exercise_feedback,
+                "items": normalized_items
+            }
+
+            instance.correction_json = json.dumps(normalized_exercise)
+            normalized_exercises_correction.append(normalized_exercise)
             corrected_instance_ids.add(instance_id)
 
-        expected_instance_ids = set(instance_map.keys())
+        expected_instance_ids = {
+            exercise["exam_exercise_instance_id"]
+            for exercise in correction_payload["exercises"]
+        }
+
         if corrected_instance_ids != expected_instance_ids:
             db.session.rollback()
             return jsonify({"message": "Model did not correct all exercise blocks"}), 500
+
+        score = 0
+        if total_items_for_score > 0:
+            score = int((total_weighted_points / total_items_for_score) * 100)
+
+        score = max(0, min(score, 100))
+
+        general_feedback = model_general_feedback or "The exam was corrected item by item using strict grading."
+        general_feedback += (
+            f" Final score: {score}/100 based on "
+            f"{total_weighted_points:.1f}/{total_items_for_score} weighted points "
+            f"and {full_correct_items}/{total_items_for_score} fully correct answers."
+        )
+
+        if total_weighted_points > full_correct_items:
+            general_feedback += (
+                " Any extra points above the count of fully correct answers come only "
+                "from justified partial credit reflected in the item feedback."
+            )
 
         student = db.session.get(User, exam.user_id)
         if not student:
@@ -1535,7 +1685,7 @@ def submit_student_exam(exam_id: int):
         exam.llm_correction_snapshot = raw_output
         exam.score_detail_json = json.dumps({
             "general_feedback": general_feedback,
-            "exercises": exercises_correction,
+            "exercises": normalized_exercises_correction,
             "xp_gained": xp_gained,
             "student_accumulated_xp": new_accumulated_xp,
             "previous_level_id": previous_level_id,
@@ -1565,7 +1715,6 @@ def submit_student_exam(exam_id: int):
         db.session.rollback()
         return jsonify({"message": f"Unexpected error: {err}"}), 500
 
-
 @jwt_required()
 def get_student_exam_review(exam_id: int):
     """
@@ -1592,6 +1741,8 @@ def get_student_exam_review(exam_id: int):
 
         if not exam:
             return jsonify({"message": "Exam not found"}), 404
+        if exam.status != ExamStatus.SOLVED.value:
+            return jsonify({"error": "Exam is not solved yet"}), 400
 
         result = {
             "id": exam.id,
@@ -1663,3 +1814,9 @@ def get_student_exam_review(exam_id: int):
 
     except Exception as err:  # pylint: disable=broad-except
         return jsonify({"message": f"Unexpected error: {err}"}), 500
+
+def _get_exam_with_users_and_class(exam_id: int):
+    return Exam.query.filter(
+        Exam.id == exam_id,
+        Exam.date_deleted.is_(None)
+    ).first()
