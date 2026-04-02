@@ -641,6 +641,7 @@ def get_all_exams_controller():
                     Exam.coordinator_id == current_user_id
                 )
             )
+            .order_by(Exam.date_created.desc())
             .all()
         )
 
@@ -685,6 +686,7 @@ def get_teacher_exams_controller():
                 Exam.user_id == current_user_id,
                 Exam.status != ExamStatus.GENERATING.value
             )
+            .order_by(Exam.date_created.desc())
             .all()
         )
 
@@ -730,6 +732,7 @@ def get_student_exams_controller():
                 Exam.user_id == current_user_id,
                 Exam.status != ExamStatus.GENERATING.value
             )
+            .order_by(Exam.date_created.desc())
             .all()
         )
 

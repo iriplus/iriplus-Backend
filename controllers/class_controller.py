@@ -121,7 +121,7 @@ def create_class():
 def get_all_classes():
     """Return all non-deleted classes as a JSON array."""
     try:
-        classes = Class.query.filter_by(date_deleted=None).all()
+        classes = Class.query.filter_by(date_deleted=None).order_by(Class.suggested_level.asc(), Class.description.asc()).all()
         result = [_serialize_class(clazz) for clazz in classes]
         return jsonify(result), 200
     except SQLAlchemyError as err:
