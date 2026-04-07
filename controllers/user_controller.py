@@ -321,7 +321,7 @@ def get_all_users(user_type: str):
     except KeyError:
         return jsonify({"message": f"Invalid user type: {user_type}"}), 400
 
-    users = User.query.filter(User.type== user_enum, User.date_deleted.is_(None)).all()
+    users = User.query.filter(User.type== user_enum, User.date_deleted.is_(None)).order_by(User.surname.asc(), User.name.asc()).all()
     if not users:
         return jsonify({"message": f"No {user_type.lower()}s found."}), 404
 
@@ -359,6 +359,7 @@ def get_my_students():
             joinedload(User.student_class), # type: ignore[arg-type]
             joinedload(User.student_level) # type: ignore[arg-type]
         )
+        .order_by(User.surname.asc(), User.name.asc())
         .all()
     )
 

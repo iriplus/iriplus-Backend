@@ -540,9 +540,11 @@ def _serialize_student_progress(student: User, levels: list[Level]) -> dict:
         A JSON-serializable progress payload.
     """
     current_xp = int(student.accumulated_xp or 0)
+    current_minimum_level_xp = int(student.student_level.min_xp or 0)
 
     return {
         "currentLevel": _resolve_level_number(current_xp, levels),
+        "currentMinimumLevelXp": current_minimum_level_xp,
         "currentLevelName": _resolve_level_name(current_xp, levels),
         "currentXp": current_xp,
         "nextLevelXp": _resolve_next_level_xp(current_xp, levels),
