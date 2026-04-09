@@ -113,40 +113,35 @@ class ExamFallbackService:
         return [
             {
                 "question": (
-                    "Many AI-enabled tools ___ behavior by suggesting next steps. "
-                    "(A) push, (B) nudge, (C) force, (D) remove."
+                    "Many AI-enabled tools ___ behavior by suggesting next steps (push / nudge / force / remove)."
                 ),
                 "options": ["push", "nudge", "force", "remove"],
                 "answer": "nudge",
             },
             {
                 "question": (
-                    "Employees are at risk of losing their ___, which is key to personal development. "
-                    "(A) routine, (B) agency, (C) system, (D) memory."
+                    "Employees are at risk of losing their ___, which is key to personal development (routine / agency / system / memory)."
                 ),
                 "options": ["routine", "agency", "system", "memory"],
                 "answer": "agency",
             },
             {
                 "question": (
-                    "Executives worry that development paths are becoming too ___. "
-                    "(A) guided, (B) random, (C) chaotic, (D) flexible."
+                    "Executives worry that development paths are becoming too ___ (guided / random / chaotic / flexible)."
                 ),
                 "options": ["guided", "random", "chaotic", "flexible"],
                 "answer": "guided",
             },
             {
                 "question": (
-                    "The main challenge is to ___ systems that preserve human choice. "
-                    "(A) destroy, (B) design, (C) ignore, (D) replace."
+                    "The main challenge is to ___ systems that preserve human choice (destroy / design / ignore / replace)."
                 ),
                 "options": ["destroy", "design", "ignore", "replace"],
                 "answer": "design",
             },
             {
                 "question": (
-                    "We must decide whether to ___ agency to machines or retain human control. "
-                    "(A) give, (B) lose, (C) cede, (D) drop."
+                    "We must decide whether to ___ agency to machines or retain human control (give / lose / cede / drop)."
                 ),
                 "options": ["give", "lose", "cede", "drop"],
                 "answer": "cede",
@@ -192,35 +187,35 @@ class ExamFallbackService:
         return [
             {
                 "question": (
-                    "AI systems are changing the way people make ______ decisions."
+                    "AI systems are changing the way people make ______ (ORGANIZE) decisions."
                 ),
                 "base_word": "ORGANIZE",
                 "answer": "organizational",
             },
             {
                 "question": (
-                    "Many tools influence behavior through subtle ______."
+                    "Many tools influence behavior through subtle ______ (SUGGEST)."
                 ),
                 "base_word": "SUGGEST",
                 "answer": "suggestions",
             },
             {
                 "question": (
-                    "Losing agency can affect personal ______ and growth."
+                    "Losing agency can affect personal ______ (DEVELOP) and growth."
                 ),
                 "base_word": "DEVELOP",
                 "answer": "development",
             },
             {
                 "question": (
-                    "Executives are concerned about the ______ of decision-making skills."
+                    "Executives are concerned about the ______ (WEAK) of decision-making skills."
                 ),
                 "base_word": "WEAK",
                 "answer": "weakening",
             },
             {
                 "question": (
-                    "It is important to design systems that allow ______ thinking."
+                    "It is important to design systems that allow ______ (DEPEND) thinking."
                 ),
                 "base_word": "DEPEND",
                 "answer": "independent",
@@ -230,16 +225,12 @@ class ExamFallbackService:
     def _build_key_word_transformation_items(level: str) -> list[dict[str, Any]]:
         return [
             {
-                "question": (
-                    "Original sentence: AI tools often suggest the next step to users."
-                ),
-                "keyword": "PROPOSE",
-                "prompt": "AI tools often ______ the next step to users.",
+                "question": "Original sentence: AI tools often suggest the next step to users. \nYour sentence: AI tools often ______ (PURPOSE) the next step to users.",
                 "answer": "propose",
             },
             {
                 "question": (
-                    "Original sentence: Employees may lose their ability to make decisions."
+                    "Original sentence: Employees may lose their ability to make decisions. \nYour sentence: Employees ______ (RISK) their decision-making ability."
                 ),
                 "keyword": "RISK",
                 "prompt": "Employees ______ their decision-making ability.",
@@ -247,7 +238,7 @@ class ExamFallbackService:
             },
             {
                 "question": (
-                    "Original sentence: Executives are worried about reduced independence."
+                    "Original sentence: Executives are worried about reduced independence. \nYour sentence: Executives ______ (CONCERNED) reduced independence."
                 ),
                 "keyword": "CONCERNED",
                 "prompt": "Executives ______ reduced independence.",
@@ -255,7 +246,7 @@ class ExamFallbackService:
             },
             {
                 "question": (
-                    "Original sentence: Systems should preserve space for reflection."
+                    "Original sentence: Systems should preserve space for reflection. \nYour sentence: Systems should ______ (ALLOW) reflection."
                 ),
                 "keyword": "ALLOW",
                 "prompt": "Systems should ______ reflection.",
@@ -263,7 +254,7 @@ class ExamFallbackService:
             },
             {
                 "question": (
-                    "Original sentence: We must decide whether machines take control."
+                    "Original sentence: We must decide whether machines take control. \nYour sentence: We must decide whether to ______ (CEDE) control to machines."
                 ),
                 "keyword": "CEDE",
                 "prompt": "We must decide whether to ______ control to machines.",
@@ -275,27 +266,27 @@ class ExamFallbackService:
     def _build_multiple_choice_items(level: str) -> list[dict[str, Any]]:
         return [
             {
-                "question": "AI tools can ___ decisions automatically.",
+                "question": "AI tools can ___ (do / make / build / create) decisions automatically.",
                 "options": ["do", "make", "build", "create"],
                 "answer": "make",
             },
             {
-                "question": "Employees need to ___ ownership of their decisions.",
+                "question": "Employees need to ___ (take / do / make / bring) ownership of their decisions.",
                 "options": ["take", "do", "make", "bring"],
                 "answer": "take",
             },
             {
-                "question": "The system often suggests ___ next step.",
+                "question": "The system often suggests ___ (a / the / an / one) next step.",
                 "options": ["a", "the", "an", "one"],
                 "answer": "the",
             },
             {
-                "question": "Human agency is essential ___ personal development.",
+                "question": "Human agency is essential ___ (for / to / with / at) personal development.",
                 "options": ["for", "to", "with", "at"],
                 "answer": "for",
             },
             {
-                "question": "People should think carefully ___ what they want from AI.",
+                "question": "People should think carefully ___ (about / on / with / to) what they want from AI.",
                 "options": ["about", "on", "with", "to"],
                 "answer": "about",
             },
@@ -471,16 +462,14 @@ In just a few years, artificial intelligence (AI) tools like ChatGPT, Microsoft 
         return [
             {
                 "question": (
-                    "Some travellers are sent to destinations that do not ___. "
-                    "(A) exist, (B) arrive, (C) travel, (D) remain."
+                    "Some travellers are sent to destinations that do not ___ (exist / arrive / travel / remain)."
                 ),
                 "options": ["exist", "arrive", "travel", "remain"],
                 "answer": "exist",
             },
             {
                 "question": (
-                    "According to the guide, this kind of misinformation can be ___. "
-                    "(A) harmless, (B) common, (C) perilous, (D) amusing."
+                    "According to the guide, this kind of misinformation can be ___ (harmless / common / perilous / amusing)."
                 ),
                 "options": ["harmless", "common", "perilous", "amusing"],
                 "answer": "perilous",
@@ -505,14 +494,14 @@ In just a few years, artificial intelligence (AI) tools like ChatGPT, Microsoft 
         return [
             {
                 "question": (
-                    "The guide warned that false information could be extremely ______ for hikers."
+                    "The guide warned that false information could be extremely ______ (DANGER) for hikers."
                 ),
                 "base_word": "DANGER",
                 "answer": "dangerous",
             },
             {
                 "question": (
-                    "Many people value the ______ of AI tools when planning a trip."
+                    "Many people value the ______ (CONVENIENT) of AI tools when planning a trip."
                 ),
                 "base_word": "CONVENIENT",
                 "answer": "convenience",
@@ -524,7 +513,7 @@ In just a few years, artificial intelligence (AI) tools like ChatGPT, Microsoft 
         return [
             {
                 "question": (
-                    "Original sentence: The tourists believed the description because it looked very detailed."
+                    "Original sentence: The tourists believed the description because it looked very detailed. \nYour sentence: It was ______ (SUCH) detailed description that the tourists believed it."
                 ),
                 "keyword": "SUCH",
                 "prompt": "It was ______ detailed description that the tourists believed it.",
@@ -532,7 +521,7 @@ In just a few years, artificial intelligence (AI) tools like ChatGPT, Microsoft 
             },
             {
                 "question": (
-                    "Original sentence: You must plan mountain routes carefully in Peru."
+                    "Original sentence: You must plan mountain routes carefully in Peru. \nYour sentence: Mountain travel in Peru ______ (NEEDS) planned carefully."
                 ),
                 "keyword": "NEEDS",
                 "prompt": "Mountain travel in Peru ______ planned carefully.",
@@ -544,12 +533,12 @@ In just a few years, artificial intelligence (AI) tools like ChatGPT, Microsoft 
     def _build_multiple_choice_items(_level: str) -> list[dict[str, Any]]:
         return [
             {
-                "question": "Travellers often use AI tools to ___ their trips.",
+                "question": "Travellers often use AI tools to ___ (organize / avoid / cancel / reduce) their trips.",
                 "options": ["organise", "avoid", "cancel", "reduce"],
                 "answer": "organise",
             },
             {
-                "question": "At high altitude, hikers may lose phone ___.",
+                "question": "At high altitude, hikers may lose phone ___ (language / signal / memory / route).",
                 "options": ["language", "signal", "memory", "route"],
                 "answer": "signal",
             },
