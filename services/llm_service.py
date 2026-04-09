@@ -48,6 +48,8 @@ Rules:
 - All content must be in English.
 - Output STRICT JSON.
 - Do NOT include explanations outside JSON.
+- For "Cloze test with options" and "Multiple Choice", each question must include the answer options inside the visible question text between parenthesis and separated by a /. For example: Online learning has made education more ____________ (inclusive / exclusive / distant / private).
+- Do NOT include more than one gap per question.
 
 Required JSON schema:
 
@@ -238,10 +240,21 @@ Critical formatting rules:
 - If the item includes a prompt word, keyword, base word, or options, those may remain visible.
 - The "answer" field must contain only the correct answer text, with no labels, no explanations, and no brackets.
 - For "Open cloze test", do NOT include multiple-choice options.
-- For "Cloze test with options", each question must include the answer options inside the visible question text.
+- For "Cloze test with options" and "Multiple Choice", each question MUST include the answer options inside the visible question text between parenthesis and separated by a /. For example: Online learning has made education more ____________ (inclusive / exclusive / distant / private).
+- Do NOT create an "options" field.
 - For "Key word transformation", the visible question must include the sentence with a blank and the key word.
 - For "Word Formation", the visible question must include the base word and a blank in the sentence.
 - The value of "exercise_type" should match the requested type as closely as possible, but preserving order is more important than exact naming.
+- Each exercise block may contain multiple items (no more than three).
+- At leat one excercise type must have more than one item.
+- Each item must contain exactly one solvable task.
+- Each item must require exactly one answer.
+- Do not include multiple blanks or multiple things to solve in the same item.
+- Do NOT create any extra keys inside an item.
+- Each item must contain exactly these keys only:
+  - "question"
+  - "answer"
+- If answer choices are needed, they must be embedded in the "question" text, not stored anywhere else in the JSON.
 
 Examples:
 
@@ -259,13 +272,13 @@ Open Cloze item:
 
 Key Word Transformation item:
 {{
-  "question": "He stopped ____________ and then he carried on studying. TAKE",
-  "answer": "taking a rest"
+  "question": "Original sentence: After taking a break, he carried on studying. Your sentence: He stopped ____________ (TAKE) and then he carried on studying.",
+  "answer": "to take rest"
 }}
 
 Multiple Choice Cloze item:
 {{
-  "question": "Online learning has made education more ____________ (A) inclusive / exclusive / distant / private",
+  "question": "Online learning has made education more ____________ (inclusive / exclusive / distant / private)",
   "answer": "inclusive"
 }}
 

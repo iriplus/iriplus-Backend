@@ -1263,7 +1263,7 @@ def generate_student_exam():
             )
 
             retrieved_context_text = "\n\n---\n\n".join(contexts)
-            print(retrieved_context_text)
+            #print(retrieved_context_text)
             # ------------------------
             # LLM phase
             # ------------------------
