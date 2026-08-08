@@ -32,15 +32,24 @@ from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from orm_models import db, Exam, Class, Exercise, ExamExerciseInstance, User
 from services.rag_service import retrieve_course_context
-from services.llm_service import build_prompt, generate_exam_from_llm, build_refinement_prompt, build_student_prompt, build_student_correction_prompt, generate_student_correction_from_llm
+from services.llm_service import (
+    build_refinement_prompt,
+    build_student_correction_prompt,
+    build_student_exercise_prompt,
+    build_teacher_exercise_prompt,
+    generate_exam_from_llm,
+    generate_student_correction_from_llm,
+)
+from services.exam_generation_pipeline import (
+    extract_json_object,
+    generate_exercise_blocks,
+)
 from services.generic_context_service import get_random_generic_context
 from utils.email_utils import send_exam_accepted_email_to_teacher, send_exam_corrected_email_to_coordinator, send_exam_on_review_email_to_teacher, send_exam_sent_to_correction_email_to_teacher
 from utils.types_enum import ExamStatus
 from utils.exam_xp import calculate_exam_xp, resolve_level_from_xp, apply_exam_xp_to_student
 from utils.mpreg_utils import predict_next_student_score, get_difficulty_band
 from services.exam_fallback_service import ExamFallbackService, StudentExamFallbackService
-import time
-import math
 
 def extract_json(text: str) -> str:
     """
@@ -51,11 +60,7 @@ def extract_json(text: str) -> str:
     :return: Description
     :rtype: str
     """
-    start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1:
-        raise ValueError("No JSON object found in model output")
-    return text[start:end + 1]
+    return extract_json_object(text)
 
 @jwt_required()
 def generate_exam():
@@ -88,6 +93,10 @@ def generate_exam():
 
     if not isinstance(exercise_type_ids, list) or not exercise_type_ids:
         return jsonify({"message": "exercise_type_ids must be a non-empty list"}), 400
+    if len({str(exercise_id) for exercise_id in exercise_type_ids}) != len(
+        exercise_type_ids
+    ):
+        return jsonify({"message": "Duplicated exercise types are not supported"}), 400
     if not user:
         return jsonify({"message":"Teacher not found"}), 404
 
@@ -133,74 +142,53 @@ def generate_exam():
         # ------------------------
         level = class_obj.suggested_level
 
-        try:
-            # ------------------------
-            # RAG Phase
-            # ------------------------
-            exercise_list_text = "\n".join(
-                [f"- {ex.name}: {ex.content_description}" for ex in exercise_types]
-            )
+        exercise_list_text = "\n".join(
+            f"- {ex.name}: {ex.content_description}" for ex in exercise_types
+        )
+        requested_exercise_names = ", ".join(ex.name for ex in exercise_types)
 
+        # Retrieve historical context once and reuse it across all exercise calls.
+        try:
             contexts = retrieve_course_context(
                 course_id=class_obj.description,
                 level=level,
                 exercises_description=exercise_list_text,
             )
-
             retrieved_context_text = "\n\n---\n\n".join(contexts)
+        except Exception as err:  # pylint: disable=broad-except
+            print(f"Teacher exam RAG retrieval failed; continuing without RAG: {err}")
+            retrieved_context_text = ""
 
-            # ------------------------
-            # LLM Phase
-            # ------------------------
-            prompt = build_prompt(
+        def build_exercise_prompt(exercise, previous_questions, _index):
+            return build_teacher_exercise_prompt(
                 level=level,
-                teacher_text=context,
-                exercise_list_text=exercise_list_text,
+                source_text=context,
+                requested_exercises=requested_exercise_names,
+                exercise_name=exercise.name,
+                exercise_description=exercise.content_description,
                 retrieved_context=retrieved_context_text,
+                previous_questions=previous_questions,
             )
 
-            raw_output = generate_exam_from_llm(prompt)
-
-            #print("----- MODEL RAW OUTPUT -----")
-            #print(raw_output)
-            #print("----- END MODEL OUTPUT -----")
-
-            cleaned_json = extract_json(raw_output)
-            parsed_output = json.loads(cleaned_json)
-
-            if "exercises" not in parsed_output:
-                raise ValueError("Invalid exam structure returned by model")
-
-        except Exception as err:
-            print("Generation flow failed, using fallback:", err)
-            time.sleep(10)
-            parsed_output = ExamFallbackService.build_exam_payload(
+        def build_exercise_fallback(exercise):
+            fallback_payload = ExamFallbackService.build_exam_payload(
                 level=level,
-                exercise_types=exercise_types,
+                exercise_types=[exercise],
             )
+            return fallback_payload["exercises"][0]
 
-            raw_output = ExamFallbackService.build_snapshot(
-                reason=str(err),
-                payload=parsed_output,
-            )
+        generated_blocks = generate_exercise_blocks(
+            exercise_types=exercise_types,
+            prompt_builder=build_exercise_prompt,
+            llm_generator=generate_exam_from_llm,
+            fallback_builder=build_exercise_fallback,
+        )
+        parsed_output = {"exercises": generated_blocks}
 
         # ------------------------
         # Persist Exercise Instances
         # ------------------------
-        for exercise_block in parsed_output["exercises"]:
-            exercise_name = exercise_block["exercise_type"]
-
-            # buscar el exercise type en BD
-            exercise_type = Exercise.query.filter(
-                db.func.lower(Exercise.name) == exercise_name.lower()
-            ).first()
-
-            if not exercise_type:
-                db.session.rollback()
-                return jsonify({
-                    "message": f"Exercise type '{exercise_name}' not found in catalog"
-                }), 400
-
+        for exercise_type, exercise_block in zip(exercise_types, generated_blocks):
             instance = ExamExerciseInstance(
                 exam_id=new_exam.id,
                 exercise_type_id=exercise_type.id,
@@ -217,7 +205,10 @@ def generate_exam():
         # ------------------------
         # Persist Results
         # ------------------------
-        new_exam.generated_snapshot = raw_output
+        new_exam.generated_snapshot = json.dumps(
+            parsed_output,
+            ensure_ascii=False,
+        )
         new_exam.status = ExamStatus.GENERATING.value
 
         db.session.commit()
@@ -1161,7 +1152,8 @@ def generate_student_exam():
     - RAG retrieval
     - LLM generation
 
-    If the generation flow fails, a deterministic fallback exam is created.
+    If one exercise fails generation or validation, only that exercise uses
+    its deterministic fallback.
     """
 
     data = request.get_json(silent=True)
@@ -1180,6 +1172,10 @@ def generate_student_exam():
         return jsonify(
             {"message": "exercise_type_ids must be a non-empty list"}
         ), 400
+    if len({str(exercise_id) for exercise_id in exercise_type_ids}) != len(
+        exercise_type_ids
+    ):
+        return jsonify({"message": "Duplicated exercise types are not supported"}), 400
 
     if not user:
         return jsonify({"message": "Student not found"}), 404
@@ -1252,58 +1248,49 @@ def generate_student_exam():
             for exercise in exercise_types
         )
 
+        requested_exercise_names = ", ".join(
+            exercise.name for exercise in exercise_types
+        )
+
+        # Retrieve historical context once and reuse it across all exercise calls.
         try:
-            # ------------------------
-            # RAG phase
-            # ------------------------
             contexts = retrieve_course_context(
                 course_id=course_name,
                 level=level,
                 exercises_description=exercise_list_text,
             )
-
             retrieved_context_text = "\n\n---\n\n".join(contexts)
-            #print(retrieved_context_text)
-            # ------------------------
-            # LLM phase
-            # ------------------------
-            prompt = build_student_prompt(
+        except Exception as err:  # pylint: disable=broad-except
+            print(f"Student exam RAG retrieval failed; continuing without RAG: {err}")
+            retrieved_context_text = ""
+
+        def build_exercise_prompt(exercise, previous_questions, _index):
+            return build_student_exercise_prompt(
                 level=level,
                 source_text=generic_context,
-                exercise_list_text=exercise_list_text,
+                requested_exercises=requested_exercise_names,
+                exercise_name=exercise.name,
+                exercise_description=exercise.content_description,
                 retrieved_context=retrieved_context_text,
                 difficulty_band=difficulty_band,
+                previous_questions=previous_questions,
+                target_item_count=2,
             )
 
-            raw_output = generate_exam_from_llm(prompt)
-
-            cleaned_json = extract_json(raw_output)
-            parsed_output = json.loads(cleaned_json)
-
-            exercises_output = parsed_output.get("exercises")
-            if not isinstance(exercises_output, list) or not exercises_output:
-                raise ValueError("Invalid exam structure returned by model")
-
-            if len(exercises_output) != len(exercise_types):
-                raise ValueError(
-                    "Model did not return the expected number of exercise blocks"
-                )
-
-        except Exception as err:  # pylint: disable=broad-except
-            print("Student generation flow failed, using fallback:", err)
-            time.sleep(10)
-            parsed_output = StudentExamFallbackService.build_exam_payload(
+        def build_exercise_fallback(exercise):
+            fallback_payload = StudentExamFallbackService.build_exam_payload(
                 level=level,
-                exercise_types=exercise_types,
+                exercise_types=[exercise],
             )
-            raw_output = StudentExamFallbackService.build_snapshot(
-                reason=str(err),
-                payload=parsed_output,
-            )
-            exercises_output = parsed_output["exercises"]
+            return fallback_payload["exercises"][0]
 
-            # Override the original random bucket context with the fixed fallback one.
-            new_exam.context = StudentExamFallbackService.FALLBACK_CONTEXT
+        exercises_output = generate_exercise_blocks(
+            exercise_types=exercise_types,
+            prompt_builder=build_exercise_prompt,
+            llm_generator=generate_exam_from_llm,
+            fallback_builder=build_exercise_fallback,
+        )
+        parsed_output = {"exercises": exercises_output}
 
         # ------------------------
         # Persist generated exercise instances
@@ -1347,7 +1334,10 @@ def generate_student_exam():
         # ------------------------
         # Persist exam result
         # ------------------------
-        new_exam.generated_snapshot = raw_output
+        new_exam.generated_snapshot = json.dumps(
+            parsed_output,
+            ensure_ascii=False,
+        )
         new_exam.status = ExamStatus.STUDENT_EXAM.value
 
         db.session.commit()
