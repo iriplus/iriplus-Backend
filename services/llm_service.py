@@ -69,6 +69,141 @@ Required JSON schema:
 }}
 """
 
+
+def _format_previous_questions(previous_questions: list[str] | tuple[str, ...]) -> str:
+    """Keep cross-exercise anti-duplication context compact."""
+    if not previous_questions:
+        return "None; this is the first exercise in the exam."
+
+    recent_questions = previous_questions[-10:]
+    return "\n".join(f"- {question[:300]}" for question in recent_questions)
+
+
+def build_teacher_exercise_prompt(
+    level: str,
+    source_text: str,
+    requested_exercises: str,
+    exercise_name: str,
+    exercise_description: str,
+    retrieved_context: str,
+    previous_questions: list[str] | tuple[str, ...],
+) -> str:
+    """Build a compact teacher prompt for exactly one exercise type."""
+    historical_context = retrieved_context or "No historical context was retrieved."
+    return f"""
+You are an expert Cambridge English exam designer.
+
+Shared exam context:
+- Cambridge level: {level}
+- All exercise types requested for this exam: {requested_exercises}
+
+Teacher source text:
+{source_text}
+
+Retrieved historical course material
+(structural guidance only; never copy its content):
+{historical_context}
+
+Generate ONLY this exercise type:
+- Name: {exercise_name}
+- Definition: {exercise_description}
+
+Questions already generated for other exercise types
+(do not repeat or closely paraphrase them):
+{_format_previous_questions(previous_questions)}
+
+Rules:
+- Generate exactly one exercise block for the named type.
+- Base the exercise on the teacher source text and keep it coherent with the shared exam context.
+- Content must be original, in English, and strictly appropriate for the Cambridge level.
+- Every item must contain exactly one solvable task, one question, and one answer.
+- Do not include more than one gap per question.
+- For "Cloze test with options" and "Multiple Choice", embed options in the question
+  between parentheses and separate them with " / ". Do not create an options field.
+- Output strict JSON only, with no text outside JSON.
+
+Required JSON schema:
+{{
+  "exercise": {{
+    "exercise_type": "{exercise_name}",
+    "instructions": "string",
+    "items": [
+      {{"question": "string", "answer": "string"}}
+    ]
+  }}
+}}
+"""
+
+
+def build_student_exercise_prompt(
+    level: str,
+    source_text: str,
+    requested_exercises: str,
+    exercise_name: str,
+    exercise_description: str,
+    retrieved_context: str,
+    difficulty_band: str,
+    previous_questions: list[str] | tuple[str, ...],
+    target_item_count: int = 2,
+) -> str:
+    """Build a student-facing prompt for exactly one exercise type."""
+    difficulty_instruction = {
+        "easier": "Make it slightly easier within the level using clearer clues and common vocabulary.",
+        "harder": "Make it slightly harder within the level using less obvious clues and stronger distractors.",
+    }.get(difficulty_band, "Use the standard difficulty for the stated level.")
+    historical_context = retrieved_context or "No historical context was retrieved."
+
+    return f"""
+You are an expert Cambridge English exam designer.
+
+Shared exam context:
+- Cambridge level: {level}
+- Adaptive difficulty: {difficulty_instruction}
+- All exercise types requested for this exam: {requested_exercises}
+
+Source text:
+{source_text}
+
+Retrieved historical course material
+(structural guidance only; never copy its content):
+{historical_context}
+
+Generate ONLY this exercise type:
+- Name: {exercise_name}
+- Definition: {exercise_description}
+- Required number of items: {target_item_count}
+
+Questions already generated for other exercise types
+(do not repeat or closely paraphrase them):
+{_format_previous_questions(previous_questions)}
+
+Student-exam rules:
+- Generate exactly one exercise block for the named type and exactly {target_item_count} items.
+- Base every item on the source text and keep it coherent with the shared exam context.
+- Content must be original, in English, and appropriate for the Cambridge level.
+- Each item must have exactly the keys "question" and "answer".
+- Each question must contain exactly one task and require exactly one answer.
+- The visible question must use underscores for the answer location when the exercise uses a gap.
+- The answer must contain only the hidden correct answer, without labels or explanations.
+- Open cloze must not contain options.
+- Cloze with options and Multiple Choice must embed options in the question between
+  parentheses separated by " / "; never create an options field.
+- Key word transformation must show the key word and the sentence with a gap.
+- Word Formation must show the base word and the sentence with a gap.
+- Output strict JSON only, with no text outside JSON.
+
+Required JSON schema:
+{{
+  "exercise": {{
+    "exercise_type": "{exercise_name}",
+    "instructions": "string",
+    "items": [
+      {{"question": "string", "answer": "string"}}
+    ]
+  }}
+}}
+"""
+
 def build_refinement_prompt(
     level: str,
     original_snapshot: str,

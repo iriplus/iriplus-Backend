@@ -150,8 +150,9 @@ class Exam(BaseModel):
         context: Teacher-provided source text used as the basis for
             AI-generated exercises.
 
-        generated_snapshot: Raw JSON string returned by the LLM.
-            Stored for auditing, reproducibility, and debugging.
+        generated_snapshot: Canonical whole-exam JSON assembled from generated
+            exercise blocks. Stored for refinement, auditing, reproducibility,
+            and debugging.
 
         coordinator_id: Foreign key to the coordinating user.
         coordinator_exam: Many-to-one relationship to the coordinating User.
